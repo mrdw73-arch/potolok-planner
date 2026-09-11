@@ -33,10 +33,7 @@ export default function CloudSync() {
     setBusy(true);
     setMessage('Синхронизация…');
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       setBusy(false);
       setMessage('Сначала войдите');
@@ -91,9 +88,7 @@ export default function CloudSync() {
       setUserEmail(data.user?.email ?? null);
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: authState } = supabase.auth.onAuthStateChange((event, session) => {
       const nextEmail = session?.user?.email ?? null;
       setUserEmail(nextEmail);
 
@@ -103,7 +98,7 @@ export default function CloudSync() {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => authState.subscription.unsubscribe();
   }, [sync]);
 
   async function auth(event: FormEvent<HTMLFormElement>, action: 'login' | 'signup') {
@@ -163,44 +158,57 @@ export default function CloudSync() {
       {open && (
         <div className="cloud-body">
           {!userEmail ? (
-            <form onSubmit={(event) => void auth(event, 'login')}>
-              <input
-                type="email"
-                required
-                autoComplete="email"
-                placeholder="Email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-              <input
-                type="password"
-                required
-                minLength={6}
-                autoComplete="current-password"
-                placeholder="Пароль (минимум 6 символов)"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-              />
-              <div className="button-row">
-                <button className="primary" disabled={busy} type="submit">
-                  Войти
-                </button>
-                <button
-                  className="ghost"
-                  disabled={busy}
-                  type="button"
-                  onClick={(event) => {
-                    const form = event.currentTarget.form;
-                    if (form) void auth({ preventDefault: () => {}, } as FormEvent<HTMLFormElement>, 'signup');
-                  }}
-                >
-                  Регистрация
-                </button>
-              </div>
-            </form>
+            <>
+              <form onSubmit={(event) => void auth(event, 'login')}>
+                <input
+                  type="email"
+                  required
+                  autoComplete="email"
+                  placeholder="Email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  autoComplete="current-password"
+                  placeholder="Пароль (минимум 6 символов)"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+                <div className="button-row">
+                  <button className="primary" disabled={busy} type="submit">Войти</button>
+                  <button
+                    className="ghost"
+                    disabled={busy}
+                    type="button"
+                    onClick={() => {
+                      void (async () => {
+                        if (!supabase) return;
+                        setBusy(true);
+                        setMessage('');
+                        const result = await supabase.auth.signUp({
+                          email: email.trim(),
+                          password,
+                        });
+                        setBusy(false);
+                        setMessage(
+                          result.error
+                            ? result.error.message
+                            : 'Аккаунт создан. Проверьте почту, если подтверждение включено.',
+                        );
+                      })();
+                    }}
+                  >
+                    Регистрация
+                  </button>
+                </div>
+              </form>
+            </>
           ) : (
             <>
-              <button className="primary" disabled={busy} onClick={() => void sync}>
+              <button className="primary" disabled={busy} onClick={() => void sync()}>
                 {busy ? 'Синхронизация…' : 'Синхронизировать проекты'}
               </button>
               <button className="ghost" disabled={busy} onClick={() => void logout()}>
