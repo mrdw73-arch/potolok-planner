@@ -1,54 +1,85 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { PointerEvent, useMemo, useState } from 'react';
 
+type Point = { x: number; y: number };
 const MIN = 1000;
 const MAX = 20000;
+const initialPoints: Point[] = [
+  { x: 150, y: 120 },
+  { x: 650, y: 120 },
+  { x: 650, y: 480 },
+  { x: 150, y: 480 },
+];
 
 export default function Home() {
-  const [width, setWidth] = useState(4000);
-  const [length, setLength] = useState(5000);
+  const [points, setPoints] = useState<Point[]>(initialPoints);
+  const [selected, setSelected] = useState(0);
+  const [width, setWidth] = useState(5000);
+  const [height, setHeight] = useState(3600);
   const [name, setName] = useState('Новая комната');
+  const [dragging, setDragging] = useState<number | null>(null);
 
-  const area = useMemo(() => (width * length) / 1_000_000, [width, length]);
-  const perimeter = useMemo(() => (2 * (width + length)) / 1000, [width, length]);
-  const ratio = Math.min(width, length) / Math.max(width, length);
+  const area = useMemo(() => (width * height) / 1_000_000, [width, height]);
+  const perimeter = useMemo(() => (2 * (width + height)) / 1000, [width, height]);
+  const selectedPoint = points[selected];
+
+  function updateSelectedSize(value: number, axis: 'width' | 'height') {
+    const next = Math.max(MIN, Math.min(MAX, value || MIN));
+    if (axis === 'width') setWidth(next);
+    else setHeight(next);
+  }
+
+  function movePoint(index: number, event: PointerEvent<SVGCircleElement>) {
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * 800;
+    const y = ((event.clientY - rect.top) / rect.height) * 600;
+    setPoints(current => current.map((point, i) => i === index ? { x: Math.max(80, Math.min(720, x)), y: Math.max(70, Math.min(530, y)) } : point));
+  }
+
+  function resetRoom() {
+    setPoints(initialPoints);
+    setSelected(0);
+    setWidth(5000);
+    setHeight(3600);
+    setName('Новая комната');
+  }
 
   return (
     <main className="app-shell">
       <header className="topbar">
         <div className="brand"><span className="brand-mark">P</span><span>Potolok Planner</span></div>
         <div className="project-name"><input value={name} onChange={e => setName(e.target.value)} aria-label="Название проекта" /></div>
-        <div className="top-actions"><button className="ghost">Новый</button><button className="primary">Сохранить</button></div>
+        <div className="top-actions"><button className="ghost" onClick={resetRoom}>Новый</button><button className="primary">Сохранить</button></div>
       </header>
 
       <section className="workspace">
         <aside className="panel left-panel">
-          <div className="panel-title">Комната</div>
+          <div className="panel-title">Конструктор</div>
           <label>Название<input value={name} onChange={e => setName(e.target.value)} /></label>
-          <div className="section-title">Размеры, мм</div>
-          <label>Ширина<input type="number" min={MIN} max={MAX} step={100} value={width} onChange={e => setWidth(Math.max(MIN, Math.min(MAX, Number(e.target.value) || MIN)))} /></label>
-          <label>Длина<input type="number" min={MIN} max={MAX} step={100} value={length} onChange={e => setLength(Math.max(MIN, Math.min(MAX, Number(e.target.value) || MIN)))} /></label>
-          <button className="add-button">＋ Добавить помещение</button>
-          <div className="hint">Все размеры хранятся в миллиметрах. Позже здесь появятся углы, ниши, светильники и карнизы.</div>
+          <div className="section-title">Выбранный участок</div>
+          <label>Ширина, мм<input type="number" min={MIN} max={MAX} step={100} value={width} onChange={e => updateSelectedSize(Number(e.target.value), 'width')} /></label>
+          <label>Длина, мм<input type="number" min={MIN} max={MAX} step={100} value={height} onChange={e => updateSelectedSize(Number(e.target.value), 'height')} /></label>
+          <button className="add-button" onClick={() => setSelected((selected + 1) % points.length)}>Следующая точка →</button>
+          <div className="hint">Перетаскивай белые узлы на плане мышью. Выбранный угол подсвечивается. Это основа для произвольного контура.</div>
         </aside>
 
         <div className="canvas-area">
-          <div className="canvas-toolbar"><span>2D-план</span><span className="muted">Масштаб автоматически</span></div>
+          <div className="canvas-toolbar"><span>2D-план · редактирование</span><span className="muted">Узлы: {points.length}</span></div>
           <div className="drawing-wrap">
-            <svg className="drawing" viewBox="0 0 800 600" role="img" aria-label="План комнаты">
+            <svg className="drawing" viewBox="0 0 800 600" onPointerUp={() => setDragging(null)} onPointerLeave={() => setDragging(null)} role="img" aria-label="Интерактивный план комнаты">
               <defs><pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse"><path d="M 25 0 L 0 0 0 25" fill="none" stroke="currentColor" strokeOpacity=".07" /></pattern></defs>
               <rect width="800" height="600" fill="url(#grid)" />
-              <g transform="translate(140 100)">
-                <rect width={520 * ratio} height="360" className="room" rx="2" />
-                <line x1="0" y1="-35" x2={520 * ratio} y2="-35" className="dimension" />
-                <line x1="0" y1="-45" x2="0" y2="-25" className="tick" /><line x1={520 * ratio} y1="-45" x2={520 * ratio} y2="-25" className="tick" />
-                <text x={(260 * ratio)} y="-50" className="dimension-text" textAnchor="middle">{width} мм</text>
-                <line x1={550 * ratio} y1="0" x2={550 * ratio} y2="360" className="dimension" />
-                <line x1={540 * ratio} y1="0" x2={560 * ratio} y2="0" className="tick" /><line x1={540 * ratio} y1="360" x2={560 * ratio} y2="360" className="tick" />
-                <text x={565 * ratio} y="180" className="dimension-text" transform={`rotate(90 ${565 * ratio} 180)`} textAnchor="middle">{length} мм</text>
-                <text x={(260 * ratio)} y="190" className="area-text" textAnchor="middle">{area.toFixed(2)} м²</text>
-              </g>
+              <polygon points={points.map(point => `${point.x},${point.y}`).join(' ')} className="room" />
+              {points.map((point, index) => {
+                const next = points[(index + 1) % points.length];
+                const mx = (point.x + next.x) / 2;
+                const my = (point.y + next.y) / 2;
+                return <g key={index}><text x={mx} y={my - 10} className="dimension-text" textAnchor="middle">{index % 2 === 0 ? width : height} мм</text><circle cx={point.x} cy={point.y} r={selected === index ? 10 : 8} className={selected === index ? 'handle selected' : 'handle'} onPointerDown={() => { setSelected(index); setDragging(index); }} onPointerMove={event => dragging === index && movePoint(index, event)} /></g>;
+              })}
+              <text x="400" y="315" className="area-text" textAnchor="middle">{area.toFixed(2)} м²</text>
             </svg>
           </div>
         </div>
@@ -57,14 +88,14 @@ export default function Home() {
           <div className="panel-title">Параметры</div>
           <div className="stat"><span>Площадь</span><strong>{area.toFixed(2)} м²</strong></div>
           <div className="stat"><span>Периметр</span><strong>{perimeter.toFixed(2)} м</strong></div>
-          <div className="stat"><span>Тип</span><strong>Прямоугольник</strong></div>
+          <div className="stat"><span>Углы</span><strong>{points.length}</strong></div>
           <div className="divider" />
-          <div className="section-title">Следующие элементы</div>
+          <div className="section-title">Инструменты</div>
+          <button className="feature">＋ Добавить угол</button>
           <button className="feature">＋ Светильник</button>
           <button className="feature">＋ Люстра</button>
           <button className="feature">＋ Карниз</button>
-          <button className="feature">＋ Ниша</button>
-          <div className="coming">Функции будут добавлены на следующих этапах.</div>
+          <div className="coming">Следующим шагом добавим вставку новых точек на стену и удаление углов.</div>
         </aside>
       </section>
     </main>
