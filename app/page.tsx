@@ -1,6 +1,7 @@
 'use client';
 
 import { PointerEvent, useMemo, useState } from 'react';
+import { calculateEstimate } from '../lib/estimate';
 
 type Point = { x: number; y: number };
 type ElementType = 'spot' | 'chandelier' | 'cornice';
@@ -12,6 +13,16 @@ const SVG_H = 600;
 const initialPoints: Point[] = [
   { x: 0, y: 0 }, { x: 5000, y: 0 }, { x: 5000, y: 3600 }, { x: 0, y: 3600 },
 ];
+const initialPrices = {
+  canvasPricePerM2: 900,
+  profilePricePerM: 350,
+  insertPricePerM: 120,
+  fastenerPricePerM: 45,
+  spotlightPrice: 700,
+  chandelierPrice: 1200,
+  cornicePricePerM: 650,
+  wastePercent: 10,
+};
 
 function distance(a: Point, b: Point) { return Math.hypot(b.x - a.x, b.y - a.y); }
 function polygonArea(points: Point[]) {
@@ -35,10 +46,21 @@ export default function Home() {
   const [elements, setElements] = useState<CeilingElement[]>([]);
   const [selectedElement, setSelectedElement] = useState<number | null>(null);
   const [nextId, setNextId] = useState(1);
+  const [prices, setPrices] = useState(initialPrices);
 
   const area = useMemo(() => polygonArea(points) / 1_000_000, [points]);
   const perimeter = useMemo(() => polygonPerimeter(points) / 1000, [points]);
   const wallLength = distance(points[selectedWall], points[(selectedWall + 1) % points.length]);
+  const corniceLength = useMemo(() => elements.filter(e => e.type === 'cornice').length * perimeter, [elements, perimeter]);
+  const estimate = useMemo(() => calculateEstimate({
+    areaM2: area,
+    perimeterM: perimeter,
+    spotlightCount: elements.filter(e => e.type === 'spot').length,
+    chandelierCount: elements.filter(e => e.type === 'chandelier').length,
+    corniceCount: elements.filter(e => e.type === 'cornice').length,
+    corniceLengthM: corniceLength,
+    ...prices,
+  }), [area, perimeter, elements, prices, corniceLength]);
 
   const bounds = useMemo(() => {
     const xs = points.map(p => p.x); const ys = points.map(p => p.y);
@@ -49,14 +71,12 @@ export default function Home() {
 
   function toSvg(point: Point) { return { x: bounds.offsetX + (point.x - bounds.minX) * bounds.scale, y: bounds.offsetY + (point.y - bounds.minY) * bounds.scale }; }
   function fromSvg(x: number, y: number) { return { x: (x - bounds.offsetX) / bounds.scale + bounds.minX, y: (y - bounds.offsetY) / bounds.scale + bounds.minY }; }
-
   function movePoint(index: number, event: PointerEvent<SVGCircleElement>) {
     const svg = event.currentTarget.ownerSVGElement; if (!svg) return;
     const rect = svg.getBoundingClientRect();
     const next = fromSvg(((event.clientX - rect.left) / rect.width) * SVG_W, ((event.clientY - rect.top) / rect.height) * SVG_H);
     setPoints(current => current.map((point, i) => i === index ? { x: Math.round(Math.max(0, next.x)), y: Math.round(Math.max(0, next.y)) } : point));
   }
-
   function addCorner() {
     const nextIndex = (selectedWall + 1) % points.length;
     const a = points[selectedWall]; const b = points[nextIndex];
@@ -64,14 +84,12 @@ export default function Home() {
     setPoints(current => [...current.slice(0, nextIndex), midpoint, ...current.slice(nextIndex)]);
     setSelectedPoint(nextIndex); setSelectedWall(nextIndex);
   }
-
   function deleteCorner() {
     if (points.length <= 3) return;
     const removed = selectedPoint;
     setPoints(current => current.filter((_, index) => index !== removed));
     setSelectedPoint(Math.max(0, removed - 1)); setSelectedWall(Math.max(0, removed - 1));
   }
-
   function updateWallLength(value: number) {
     const length = Math.max(MIN_WALL, Math.round(value || MIN_WALL));
     const start = points[selectedWall]; const endIndex = (selectedWall + 1) % points.length; const end = points[endIndex];
@@ -80,28 +98,25 @@ export default function Home() {
     setPoints(current => current.map((point, index) => index === endIndex ? { x: Math.round(start.x + dx * length), y: Math.round(start.y + dy * length) } : point));
     setSelectedPoint(endIndex);
   }
-
   function addElement(type: ElementType) {
-    const element = { id: nextId, type, x: (points.reduce((s, p) => s + p.x, 0) / points.length), y: (points.reduce((s, p) => s + p.y, 0) / points.length) };
+    const element = { id: nextId, type, x: points.reduce((s, p) => s + p.x, 0) / points.length, y: points.reduce((s, p) => s + p.y, 0) / points.length };
     if (type === 'cornice') element.y = Math.max(0, Math.min(...points.map(p => p.y)) + 250);
     setElements(current => [...current, element]); setSelectedElement(nextId); setNextId(id => id + 1);
   }
-
   function moveElement(id: number, event: PointerEvent<SVGGElement>) {
     const svg = event.currentTarget.ownerSVGElement; if (!svg) return;
     const rect = svg.getBoundingClientRect();
     const next = fromSvg(((event.clientX - rect.left) / rect.width) * SVG_W, ((event.clientY - rect.top) / rect.height) * SVG_H);
     setElements(current => current.map(element => element.id === id ? { ...element, x: Math.max(0, Math.round(next.x)), y: Math.max(0, Math.round(next.y)) } : element));
   }
-
   function deleteElement() {
     if (selectedElement === null) return;
     setElements(current => current.filter(element => element.id !== selectedElement)); setSelectedElement(null);
   }
-
   function resetRoom() {
-    setPoints(initialPoints); setSelectedPoint(0); setSelectedWall(0); setElements([]); setSelectedElement(null); setName('Новая комната');
+    setPoints(initialPoints); setSelectedPoint(0); setSelectedWall(0); setElements([]); setSelectedElement(null); setName('Новая комната'); setPrices(initialPrices);
   }
+  function setPrice(key: keyof typeof initialPrices, value: number) { setPrices(current => ({ ...current, [key]: Math.max(0, Number.isFinite(value) ? value : 0) })); }
 
   return (
     <main className="app-shell">
@@ -124,7 +139,7 @@ export default function Home() {
           <button className="feature" onClick={() => addElement('chandelier')}>＋ Люстра</button>
           <button className="feature" onClick={() => addElement('cornice')}>＋ Карниз</button>
           {selectedElement !== null && <button className="delete-feature" onClick={deleteElement}>Удалить выбранный элемент</button>}
-          <div className="hint">Элементы добавляются в центр помещения и перетаскиваются мышью. Выбранный элемент подсвечивается.</div>
+          <div className="hint">Элементы добавляются в центр помещения и перетаскиваются мышью.</div>
         </aside>
 
         <div className="canvas-area">
@@ -156,17 +171,25 @@ export default function Home() {
           <div className="panel-title">Параметры</div>
           <div className="stat"><span>Площадь</span><strong>{area.toFixed(2)} м²</strong></div>
           <div className="stat"><span>Периметр</span><strong>{perimeter.toFixed(2)} м</strong></div>
-          <div className="stat"><span>Стена</span><strong>{Math.round(wallLength)} мм</strong></div>
           <div className="stat"><span>Углы</span><strong>{points.length}</strong></div>
           <div className="stat"><span>Элементы</span><strong>{elements.length}</strong></div>
           {selectedElement !== null && <div className="selected-info">Выбрано: {labels[elements.find(e => e.id === selectedElement)?.type || 'spot']}</div>}
           <div className="divider" />
-          <div className="section-title">Инструменты</div>
-          <button className="feature" onClick={addCorner}>＋ Добавить угол</button>
-          <button className="feature" onClick={() => addElement('spot')}>＋ Светильник</button>
-          <button className="feature" onClick={() => addElement('chandelier')}>＋ Люстра</button>
-          <button className="feature" onClick={() => addElement('cornice')}>＋ Карниз</button>
-          <div className="coming">Следующий этап: зоны потолка, автоматический расчёт материалов и смета.</div>
+          <div className="section-title">Смета</div>
+          <div className="estimate-lines">
+            {estimate.lines.map(item => <div className="estimate-line" key={item.name}><span>{item.name}<small>{item.quantity.toFixed(2)} {item.unit} × {item.unitPrice.toFixed(0)}</small></span><strong>{item.total.toFixed(0)} ₽</strong></div>)}
+          </div>
+          <div className="price-grid">
+            <label>Полотно, ₽/м²<input type="number" value={prices.canvasPricePerM2} onChange={e => setPrice('canvasPricePerM2', Number(e.target.value))} /></label>
+            <label>Профиль, ₽/м<input type="number" value={prices.profilePricePerM} onChange={e => setPrice('profilePricePerM', Number(e.target.value))} /></label>
+            <label>Вставка, ₽/м<input type="number" value={prices.insertPricePerM} onChange={e => setPrice('insertPricePerM', Number(e.target.value))} /></label>
+            <label>Крепёж, ₽/м<input type="number" value={prices.fastenerPricePerM} onChange={e => setPrice('fastenerPricePerM', Number(e.target.value))} /></label>
+            <label>Светильник, ₽/шт<input type="number" value={prices.spotlightPrice} onChange={e => setPrice('spotlightPrice', Number(e.target.value))} /></label>
+            <label>Люстра, ₽/шт<input type="number" value={prices.chandelierPrice} onChange={e => setPrice('chandelierPrice', Number(e.target.value))} /></label>
+            <label>Карниз, ₽/м<input type="number" value={prices.cornicePricePerM} onChange={e => setPrice('cornicePricePerM', Number(e.target.value))} /></label>
+            <label>Запас, %<input type="number" min="0" value={prices.wastePercent} onChange={e => setPrice('wastePercent', Number(e.target.value))} /></label>
+          </div>
+          <div className="estimate-total"><span>Итого</span><strong>{estimate.total.toFixed(0)} ₽</strong></div>
         </aside>
       </section>
     </main>
