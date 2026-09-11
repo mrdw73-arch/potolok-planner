@@ -13,32 +13,15 @@ export type EstimateInputs = {
   spotlightPrice: number;
   chandelierPrice: number;
   cornicePricePerM: number;
+  laborPricePerM2: number;
 };
 
-export type EstimateLine = {
-  name: string;
-  quantity: number;
-  unit: string;
-  unitPrice: number;
-  total: number;
-};
-
-export type EstimateResult = {
-  lines: EstimateLine[];
-  total: number;
-  canvasAreaM2: number;
-};
+export type EstimateLine = { name: string; quantity: number; unit: string; unitPrice: number; total: number };
+export type EstimateResult = { lines: EstimateLine[]; total: number; canvasAreaM2: number };
 
 export function calculateEstimate(input: EstimateInputs): EstimateResult {
   const canvasAreaM2 = input.areaM2 * (1 + Math.max(0, input.wastePercent) / 100);
-  const line = (name: string, quantity: number, unit: string, unitPrice: number): EstimateLine => ({
-    name,
-    quantity,
-    unit,
-    unitPrice,
-    total: quantity * unitPrice,
-  });
-
+  const line = (name: string, quantity: number, unit: string, unitPrice: number): EstimateLine => ({ name, quantity, unit, unitPrice, total: quantity * unitPrice });
   const lines = [
     line('Полотно', canvasAreaM2, 'м²', input.canvasPricePerM2),
     line('Профиль', input.perimeterM, 'м', input.profilePricePerM),
@@ -47,7 +30,7 @@ export function calculateEstimate(input: EstimateInputs): EstimateResult {
     line('Светильники', input.spotlightCount, 'шт.', input.spotlightPrice),
     line('Люстры', input.chandelierCount, 'шт.', input.chandelierPrice),
     line('Карниз', input.corniceLengthM, 'м', input.cornicePricePerM),
-  ].filter(item => item.quantity > 0 || item.name === 'Полотно' || item.name === 'Профиль' || item.name === 'Вставка' || item.name === 'Крепёж');
-
+    line('Монтаж', input.areaM2, 'м²', input.laborPricePerM2),
+  ].filter(item => item.quantity > 0 || ['Полотно', 'Профиль', 'Вставка', 'Крепёж'].includes(item.name));
   return { lines, total: lines.reduce((sum, item) => sum + item.total, 0), canvasAreaM2 };
 }
