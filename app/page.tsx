@@ -2,196 +2,43 @@
 
 import { PointerEvent, useMemo, useState } from 'react';
 import { calculateEstimate } from '../lib/estimate';
+import { CeilingProject, loadProjects, saveProjects, createProjectId } from '../lib/project';
 
-type Point = { x: number; y: number };
-type ElementType = 'spot' | 'chandelier' | 'cornice';
-type CeilingElement = { id: number; type: ElementType; x: number; y: number };
-
-const MIN_WALL = 100;
-const SVG_W = 800;
-const SVG_H = 600;
-const initialPoints: Point[] = [
-  { x: 0, y: 0 }, { x: 5000, y: 0 }, { x: 5000, y: 3600 }, { x: 0, y: 3600 },
-];
-const initialPrices = {
-  canvasPricePerM2: 900,
-  profilePricePerM: 350,
-  insertPricePerM: 120,
-  fastenerPricePerM: 45,
-  spotlightPrice: 700,
-  chandelierPrice: 1200,
-  cornicePricePerM: 650,
-  wastePercent: 10,
-};
-
-function distance(a: Point, b: Point) { return Math.hypot(b.x - a.x, b.y - a.y); }
-function polygonArea(points: Point[]) {
-  let sum = 0;
-  for (let i = 0; i < points.length; i += 1) {
-    const a = points[i]; const b = points[(i + 1) % points.length];
-    sum += a.x * b.y - b.x * a.y;
-  }
-  return Math.abs(sum) / 2;
-}
-function polygonPerimeter(points: Point[]) { return points.reduce((sum, point, i) => sum + distance(point, points[(i + 1) % points.length]), 0); }
-
-const labels: Record<ElementType, string> = { spot: 'Светильник', chandelier: 'Люстра', cornice: 'Карниз' };
-
-export default function Home() {
-  const [points, setPoints] = useState<Point[]>(initialPoints);
-  const [selectedPoint, setSelectedPoint] = useState(0);
-  const [selectedWall, setSelectedWall] = useState(0);
-  const [name, setName] = useState('Новая комната');
-  const [draggingPoint, setDraggingPoint] = useState<number | null>(null);
-  const [elements, setElements] = useState<CeilingElement[]>([]);
-  const [selectedElement, setSelectedElement] = useState<number | null>(null);
-  const [nextId, setNextId] = useState(1);
-  const [prices, setPrices] = useState(initialPrices);
-
-  const area = useMemo(() => polygonArea(points) / 1_000_000, [points]);
-  const perimeter = useMemo(() => polygonPerimeter(points) / 1000, [points]);
-  const wallLength = distance(points[selectedWall], points[(selectedWall + 1) % points.length]);
-  const corniceLength = useMemo(() => elements.filter(e => e.type === 'cornice').length * perimeter, [elements, perimeter]);
-  const estimate = useMemo(() => calculateEstimate({
-    areaM2: area,
-    perimeterM: perimeter,
-    spotlightCount: elements.filter(e => e.type === 'spot').length,
-    chandelierCount: elements.filter(e => e.type === 'chandelier').length,
-    corniceCount: elements.filter(e => e.type === 'cornice').length,
-    corniceLengthM: corniceLength,
-    ...prices,
-  }), [area, perimeter, elements, prices, corniceLength]);
-
-  const bounds = useMemo(() => {
-    const xs = points.map(p => p.x); const ys = points.map(p => p.y);
-    const minX = Math.min(...xs); const maxX = Math.max(...xs); const minY = Math.min(...ys); const maxY = Math.max(...ys);
-    const scale = Math.min(660 / Math.max(maxX - minX, 1), 460 / Math.max(maxY - minY, 1));
-    return { minX, minY, scale, offsetX: (SVG_W - (maxX - minX) * scale) / 2, offsetY: (SVG_H - (maxY - minY) * scale) / 2 };
-  }, [points]);
-
-  function toSvg(point: Point) { return { x: bounds.offsetX + (point.x - bounds.minX) * bounds.scale, y: bounds.offsetY + (point.y - bounds.minY) * bounds.scale }; }
-  function fromSvg(x: number, y: number) { return { x: (x - bounds.offsetX) / bounds.scale + bounds.minX, y: (y - bounds.offsetY) / bounds.scale + bounds.minY }; }
-  function movePoint(index: number, event: PointerEvent<SVGCircleElement>) {
-    const svg = event.currentTarget.ownerSVGElement; if (!svg) return;
-    const rect = svg.getBoundingClientRect();
-    const next = fromSvg(((event.clientX - rect.left) / rect.width) * SVG_W, ((event.clientY - rect.top) / rect.height) * SVG_H);
-    setPoints(current => current.map((point, i) => i === index ? { x: Math.round(Math.max(0, next.x)), y: Math.round(Math.max(0, next.y)) } : point));
-  }
-  function addCorner() {
-    const nextIndex = (selectedWall + 1) % points.length;
-    const a = points[selectedWall]; const b = points[nextIndex];
-    const midpoint = { x: Math.round((a.x + b.x) / 2), y: Math.round((a.y + b.y) / 2) };
-    setPoints(current => [...current.slice(0, nextIndex), midpoint, ...current.slice(nextIndex)]);
-    setSelectedPoint(nextIndex); setSelectedWall(nextIndex);
-  }
-  function deleteCorner() {
-    if (points.length <= 3) return;
-    const removed = selectedPoint;
-    setPoints(current => current.filter((_, index) => index !== removed));
-    setSelectedPoint(Math.max(0, removed - 1)); setSelectedWall(Math.max(0, removed - 1));
-  }
-  function updateWallLength(value: number) {
-    const length = Math.max(MIN_WALL, Math.round(value || MIN_WALL));
-    const start = points[selectedWall]; const endIndex = (selectedWall + 1) % points.length; const end = points[endIndex];
-    const currentLength = distance(start, end); if (!currentLength) return;
-    const dx = (end.x - start.x) / currentLength; const dy = (end.y - start.y) / currentLength;
-    setPoints(current => current.map((point, index) => index === endIndex ? { x: Math.round(start.x + dx * length), y: Math.round(start.y + dy * length) } : point));
-    setSelectedPoint(endIndex);
-  }
-  function addElement(type: ElementType) {
-    const element = { id: nextId, type, x: points.reduce((s, p) => s + p.x, 0) / points.length, y: points.reduce((s, p) => s + p.y, 0) / points.length };
-    if (type === 'cornice') element.y = Math.max(0, Math.min(...points.map(p => p.y)) + 250);
-    setElements(current => [...current, element]); setSelectedElement(nextId); setNextId(id => id + 1);
-  }
-  function moveElement(id: number, event: PointerEvent<SVGGElement>) {
-    const svg = event.currentTarget.ownerSVGElement; if (!svg) return;
-    const rect = svg.getBoundingClientRect();
-    const next = fromSvg(((event.clientX - rect.left) / rect.width) * SVG_W, ((event.clientY - rect.top) / rect.height) * SVG_H);
-    setElements(current => current.map(element => element.id === id ? { ...element, x: Math.max(0, Math.round(next.x)), y: Math.max(0, Math.round(next.y)) } : element));
-  }
-  function deleteElement() {
-    if (selectedElement === null) return;
-    setElements(current => current.filter(element => element.id !== selectedElement)); setSelectedElement(null);
-  }
-  function resetRoom() {
-    setPoints(initialPoints); setSelectedPoint(0); setSelectedWall(0); setElements([]); setSelectedElement(null); setName('Новая комната'); setPrices(initialPrices);
-  }
-  function setPrice(key: keyof typeof initialPrices, value: number) { setPrices(current => ({ ...current, [key]: Math.max(0, Number.isFinite(value) ? value : 0) })); }
-
-  return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div className="brand"><span className="brand-mark">P</span><span>Potolok Planner</span></div>
-        <div className="project-name"><input value={name} onChange={e => setName(e.target.value)} aria-label="Название проекта" /></div>
-        <div className="top-actions"><button className="ghost" onClick={resetRoom}>Новый</button><button className="primary">Сохранить</button></div>
-      </header>
-
-      <section className="workspace">
-        <aside className="panel left-panel">
-          <div className="panel-title">Конструктор</div>
-          <label>Название<input value={name} onChange={e => setName(e.target.value)} /></label>
-          <div className="section-title">Выбранная стена</div>
-          <label>Длина, мм<input type="number" min={MIN_WALL} step={10} value={Math.round(wallLength)} onChange={e => updateWallLength(Number(e.target.value))} /></label>
-          <div className="wall-meta">Стена {selectedWall + 1} · угол {selectedWall + 1} → {((selectedWall + 1) % points.length) + 1}</div>
-          <div className="button-row"><button className="add-button" onClick={addCorner}>＋ Угол</button><button className="delete-button" onClick={deleteCorner} disabled={points.length <= 3}>− Угол</button></div>
-          <div className="section-title">Элементы потолка</div>
-          <button className="feature" onClick={() => addElement('spot')}>＋ Светильник</button>
-          <button className="feature" onClick={() => addElement('chandelier')}>＋ Люстра</button>
-          <button className="feature" onClick={() => addElement('cornice')}>＋ Карниз</button>
-          {selectedElement !== null && <button className="delete-feature" onClick={deleteElement}>Удалить выбранный элемент</button>}
-          <div className="hint">Элементы добавляются в центр помещения и перетаскиваются мышью.</div>
-        </aside>
-
-        <div className="canvas-area">
-          <div className="canvas-toolbar"><span>2D-план · потолок</span><span className="muted">Углы: {points.length} · Элементы: {elements.length}</span></div>
-          <div className="drawing-wrap">
-            <svg className="drawing" viewBox={`0 0 ${SVG_W} ${SVG_H}`} onPointerUp={() => setDraggingPoint(null)} onPointerLeave={() => setDraggingPoint(null)} role="img" aria-label="Интерактивный план потолка">
-              <defs><pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse"><path d="M 25 0 L 0 0 0 25" fill="none" stroke="currentColor" strokeOpacity=".07" /></pattern></defs>
-              <rect width={SVG_W} height={SVG_H} fill="url(#grid)" />
-              <polygon points={points.map(toSvg).map(p => `${p.x},${p.y}`).join(' ')} className="room" />
-              {points.map((point, index) => {
-                const next = points[(index + 1) % points.length]; const a = toSvg(point); const b = toSvg(next);
-                const mx = (a.x + b.x) / 2; const my = (a.y + b.y) / 2; const selectedEdge = selectedWall === index;
-                return <g key={index}><line x1={a.x} y1={a.y} x2={b.x} y2={b.y} className={selectedEdge ? 'wall-hit selected-wall' : 'wall-hit'} onPointerDown={() => { setSelectedWall(index); setSelectedPoint(index); }} /><text x={mx} y={my - 12} className={selectedEdge ? 'dimension-text selected-dimension' : 'dimension-text'} textAnchor="middle">{Math.round(distance(point, next))} мм</text><circle cx={a.x} cy={a.y} r={selectedPoint === index ? 10 : 8} className={selectedPoint === index ? 'handle selected' : 'handle'} onPointerDown={event => { event.stopPropagation(); setSelectedPoint(index); setSelectedWall(index); setDraggingPoint(index); }} onPointerMove={event => draggingPoint === index && movePoint(index, event)} /></g>;
-              })}
-              {elements.map(element => {
-                const p = toSvg(element); const selected = selectedElement === element.id;
-                return <g key={element.id} transform={`translate(${p.x} ${p.y})`} className={`ceiling-element ${selected ? 'selected-element' : ''}`} onPointerDown={event => { event.stopPropagation(); setSelectedElement(element.id); }} onPointerMove={event => selected && moveElement(element.id, event)}>
-                  {element.type === 'spot' && <><circle r="14" className="spot-symbol" /><circle r="4" className="spot-core" /></>}
-                  {element.type === 'chandelier' && <><circle r="22" className="chandelier-symbol" /><path d="M-12 8 Q0 -8 12 8 M-8 12 Q0 0 8 12" className="chandelier-lines" /></>}
-                  {element.type === 'cornice' && <><rect x="-55" y="-7" width="110" height="14" rx="7" className="cornice-symbol" /><text y="-15" textAnchor="middle" className="element-label">карниз</text></>}
-                </g>;
-              })}
-              <text x={SVG_W / 2} y={SVG_H / 2 + 8} className="area-text" textAnchor="middle">{area.toFixed(2)} м²</text>
-            </svg>
-          </div>
-        </div>
-
-        <aside className="panel right-panel">
-          <div className="panel-title">Параметры</div>
-          <div className="stat"><span>Площадь</span><strong>{area.toFixed(2)} м²</strong></div>
-          <div className="stat"><span>Периметр</span><strong>{perimeter.toFixed(2)} м</strong></div>
-          <div className="stat"><span>Углы</span><strong>{points.length}</strong></div>
-          <div className="stat"><span>Элементы</span><strong>{elements.length}</strong></div>
-          {selectedElement !== null && <div className="selected-info">Выбрано: {labels[elements.find(e => e.id === selectedElement)?.type || 'spot']}</div>}
-          <div className="divider" />
-          <div className="section-title">Смета</div>
-          <div className="estimate-lines">
-            {estimate.lines.map(item => <div className="estimate-line" key={item.name}><span>{item.name}<small>{item.quantity.toFixed(2)} {item.unit} × {item.unitPrice.toFixed(0)}</small></span><strong>{item.total.toFixed(0)} ₽</strong></div>)}
-          </div>
-          <div className="price-grid">
-            <label>Полотно, ₽/м²<input type="number" value={prices.canvasPricePerM2} onChange={e => setPrice('canvasPricePerM2', Number(e.target.value))} /></label>
-            <label>Профиль, ₽/м<input type="number" value={prices.profilePricePerM} onChange={e => setPrice('profilePricePerM', Number(e.target.value))} /></label>
-            <label>Вставка, ₽/м<input type="number" value={prices.insertPricePerM} onChange={e => setPrice('insertPricePerM', Number(e.target.value))} /></label>
-            <label>Крепёж, ₽/м<input type="number" value={prices.fastenerPricePerM} onChange={e => setPrice('fastenerPricePerM', Number(e.target.value))} /></label>
-            <label>Светильник, ₽/шт<input type="number" value={prices.spotlightPrice} onChange={e => setPrice('spotlightPrice', Number(e.target.value))} /></label>
-            <label>Люстра, ₽/шт<input type="number" value={prices.chandelierPrice} onChange={e => setPrice('chandelierPrice', Number(e.target.value))} /></label>
-            <label>Карниз, ₽/м<input type="number" value={prices.cornicePricePerM} onChange={e => setPrice('cornicePricePerM', Number(e.target.value))} /></label>
-            <label>Запас, %<input type="number" min="0" value={prices.wastePercent} onChange={e => setPrice('wastePercent', Number(e.target.value))} /></label>
-          </div>
-          <div className="estimate-total"><span>Итого</span><strong>{estimate.total.toFixed(0)} ₽</strong></div>
-        </aside>
-      </section>
-    </main>
-  );
+type Point={x:number;y:number}; type ElementType='spot'|'chandelier'|'cornice'; type CeilingElement={id:number;type:ElementType;x:number;y:number};
+const MIN_WALL=100,SVG_W=800,SVG_H=600;
+const initialPoints:Point[]=[{x:0,y:0},{x:5000,y:0},{x:5000,y:3600},{x:0,y:3600}];
+const initialPrices={canvasPricePerM2:900,profilePricePerM:350,insertPricePerM:120,fastenerPricePerM:45,spotlightPrice:700,chandelierPrice:1200,cornicePricePerM:650,wastePercent:10};
+const labels:Record<ElementType,string>={spot:'Светильник',chandelier:'Люстра',cornice:'Карниз'};
+function distance(a:Point,b:Point){return Math.hypot(b.x-a.x,b.y-a.y)}
+function polygonArea(p:Point[]){let s=0;for(let i=0;i<p.length;i++){const a=p[i],b=p[(i+1)%p.length];s+=a.x*b.y-b.x*a.y}return Math.abs(s)/2}
+function polygonPerimeter(p:Point[]){return p.reduce((s,a,i)=>s+distance(a,p[(i+1)%p.length]),0)}
+export default function Home(){
+ const [points,setPoints]=useState(initialPoints),[selectedPoint,setSelectedPoint]=useState(0),[selectedWall,setSelectedWall]=useState(0),[name,setName]=useState('Новая комната'),[draggingPoint,setDraggingPoint]=useState<number|null>(null),[elements,setElements]=useState<CeilingElement[]>([]),[selectedElement,setSelectedElement]=useState<number|null>(null),[nextId,setNextId]=useState(1),[prices,setPrices]=useState(initialPrices),[projects,setProjects]=useState<CeilingProject[]>([]),[showProjects,setShowProjects]=useState(false),[status,setStatus]=useState('');
+ const area=useMemo(()=>polygonArea(points)/1e6,[points]),perimeter=useMemo(()=>polygonPerimeter(points)/1000,[points]);
+ const wallLength=distance(points[selectedWall],points[(selectedWall+1)%points.length]);
+ const corniceLength=useMemo(()=>elements.filter(e=>e.type==='cornice').length*perimeter,[elements,perimeter]);
+ const estimate=useMemo(()=>calculateEstimate({areaM2:area,perimeterM:perimeter,spotlightCount:elements.filter(e=>e.type==='spot').length,chandelierCount:elements.filter(e=>e.type==='chandelier').length,corniceCount:elements.filter(e=>e.type==='cornice').length,corniceLengthM:corniceLength,...prices}),[area,perimeter,elements,prices,corniceLength]);
+ const bounds=useMemo(()=>{const xs=points.map(p=>p.x),ys=points.map(p=>p.y),minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys),scale=Math.min(660/Math.max(maxX-minX,1),460/Math.max(maxY-minY,1));return{minX,minY,scale,offsetX:(SVG_W-(maxX-minX)*scale)/2,offsetY:(SVG_H-(maxY-minY)*scale)/2}},[points]);
+ function toSvg(p:Point){return{x:bounds.offsetX+(p.x-bounds.minX)*bounds.scale,y:bounds.offsetY+(p.y-bounds.minY)*bounds.scale}}
+ function fromSvg(x:number,y:number){return{x:(x-bounds.offsetX)/bounds.scale+bounds.minX,y:(y-bounds.offsetY)/bounds.scale+bounds.minY}}
+ function movePoint(i:number,e:PointerEvent<SVGCircleElement>){const svg=e.currentTarget.ownerSVGElement;if(!svg)return;const r=svg.getBoundingClientRect(),p=fromSvg((e.clientX-r.left)/r.width*SVG_W,(e.clientY-r.top)/r.height*SVG_H);setPoints(c=>c.map((v,j)=>j===i?{x:Math.round(Math.max(0,p.x)),y:Math.round(Math.max(0,p.y))}:v))}
+ function addCorner(){const ni=(selectedWall+1)%points.length,a=points[selectedWall],b=points[ni],m={x:Math.round((a.x+b.x)/2),y:Math.round((a.y+b.y)/2)};setPoints(c=>[...c.slice(0,ni),m,...c.slice(ni)]);setSelectedPoint(ni);setSelectedWall(ni)}
+ function deleteCorner(){if(points.length<=3)return;const r=selectedPoint;setPoints(c=>c.filter((_,i)=>i!==r));setSelectedPoint(Math.max(0,r-1));setSelectedWall(Math.max(0,r-1))}
+ function updateWallLength(v:number){const len=Math.max(MIN_WALL,Math.round(v||MIN_WALL)),ei=(selectedWall+1)%points.length,s=points[selectedWall],e=points[ei],cur=distance(s,e);if(!cur)return;const dx=(e.x-s.x)/cur,dy=(e.y-s.y)/cur;setPoints(c=>c.map((p,i)=>i===ei?{x:Math.round(s.x+dx*len),y:Math.round(s.y+dy*len)}:p));setSelectedPoint(ei)}
+ function addElement(type:ElementType){const el={id:nextId,type,x:points.reduce((s,p)=>s+p.x,0)/points.length,y:points.reduce((s,p)=>s+p.y,0)/points.length};if(type==='cornice')el.y=Math.max(0,Math.min(...points.map(p=>p.y))+250);setElements(c=>[...c,el]);setSelectedElement(nextId);setNextId(i=>i+1)}
+ function moveElement(id:number,e:PointerEvent<SVGGElement>){const svg=e.currentTarget.ownerSVGElement;if(!svg)return;const r=svg.getBoundingClientRect(),p=fromSvg((e.clientX-r.left)/r.width*SVG_W,(e.clientY-r.top)/r.height*SVG_H);setElements(c=>c.map(x=>x.id===id?{...x,x:Math.max(0,Math.round(p.x)),y:Math.max(0,Math.round(p.y))}:x))}
+ function deleteElement(){if(selectedElement===null)return;setElements(c=>c.filter(e=>e.id!==selectedElement));setSelectedElement(null)}
+ function resetRoom(){setPoints(initialPoints);setSelectedPoint(0);setSelectedWall(0);setElements([]);setSelectedElement(null);setName('Новая комната');setPrices(initialPrices);setStatus('Новый проект')}
+ function setPrice(k:keyof typeof initialPrices,v:number){setPrices(c=>({...c,[k]:Math.max(0,Number.isFinite(v)?v:0)}))}
+ function saveCurrent(){const all=loadProjects(),same=all.find(p=>p.name.trim()===name.trim()),project:CeilingProject={id:same?.id||createProjectId(),name:name.trim()||'Без названия',updatedAt:new Date().toISOString(),points,elements,prices};const next=[project,...all.filter(p=>p.id!==project.id)];saveProjects(next);setProjects(next);setStatus('Сохранено');setTimeout(()=>setStatus(''),1600)}
+ function openList(){setProjects(loadProjects());setShowProjects(true)}
+ function openProject(p:CeilingProject){setName(p.name);setPoints(p.points);setElements(p.elements);setPrices(p.prices);setSelectedPoint(0);setSelectedWall(0);setSelectedElement(null);setNextId(Math.max(0,...p.elements.map(e=>e.id))+1);setShowProjects(false);setStatus('Проект открыт')}
+ function removeProject(id:string){const next=loadProjects().filter(p=>p.id!==id);saveProjects(next);setProjects(next)}
+ return <main className="app-shell">
+ <header className="topbar"><div className="brand"><span className="brand-mark">P</span><span>Potolok Planner</span></div><div className="project-name"><input value={name} onChange={e=>setName(e.target.value)} aria-label="Название проекта"/></div><div className="top-actions"><button className="ghost" onClick={openList}>Проекты</button><button className="ghost" onClick={resetRoom}>Новый</button><button className="primary" onClick={saveCurrent}>Сохранить</button></div></header>
+ <section className="workspace"><aside className="panel left-panel"><div className="panel-title">Конструктор</div><label>Название<input value={name} onChange={e=>setName(e.target.value)}/></label><div className="section-title">Выбранная стена</div><label>Длина, мм<input type="number" min={MIN_WALL} step={10} value={Math.round(wallLength)} onChange={e=>updateWallLength(Number(e.target.value))}/></label><div className="wall-meta">Стена {selectedWall+1} · угол {selectedWall+1} → {((selectedWall+1)%points.length)+1}</div><div className="button-row"><button className="add-button" onClick={addCorner}>＋ Угол</button><button className="delete-button" onClick={deleteCorner} disabled={points.length<=3}>− Угол</button></div><div className="section-title">Элементы потолка</div><button className="feature" onClick={()=>addElement('spot')}>＋ Светильник</button><button className="feature" onClick={()=>addElement('chandelier')}>＋ Люстра</button><button className="feature" onClick={()=>addElement('cornice')}>＋ Карниз</button>{selectedElement!==null&&<button className="delete-feature" onClick={deleteElement}>Удалить выбранный элемент</button>}<div className="hint">Элементы добавляются в центр помещения и перетаскиваются мышью.</div></aside>
+ <div className="canvas-area"><div className="canvas-toolbar"><span>2D-план · потолок</span><span className="muted">Углы: {points.length} · Элементы: {elements.length}{status&&` · ${status}`}</span></div><div className="drawing-wrap"><svg className="drawing" viewBox={`0 0 ${SVG_W} ${SVG_H}`} onPointerUp={()=>setDraggingPoint(null)} onPointerLeave={()=>setDraggingPoint(null)} role="img" aria-label="Интерактивный план потолка"><defs><pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse"><path d="M 25 0 L 0 0 0 25" fill="none" stroke="currentColor" strokeOpacity=".07"/></pattern></defs><rect width={SVG_W} height={SVG_H} fill="url(#grid)"/><polygon points={points.map(toSvg).map(p=>`${p.x},${p.y}`).join(' ')} className="room"/>{points.map((point,i)=>{const next=points[(i+1)%points.length],a=toSvg(point),b=toSvg(next),mx=(a.x+b.x)/2,my=(a.y+b.y)/2,sel=selectedWall===i;return <g key={i}><line x1={a.x} y1={a.y} x2={b.x} y2={b.y} className={sel?'wall-hit selected-wall':'wall-hit'} onPointerDown={()=>{setSelectedWall(i);setSelectedPoint(i)}}/><text x={mx} y={my-12} className={sel?'dimension-text selected-dimension':'dimension-text'} textAnchor="middle">{Math.round(distance(point,next))} мм</text><circle cx={a.x} cy={a.y} r={selectedPoint===i?10:8} className={selectedPoint===i?'handle selected':'handle'} onPointerDown={e=>{e.stopPropagation();setSelectedPoint(i);setSelectedWall(i);setDraggingPoint(i)}} onPointerMove={e=>draggingPoint===i&&movePoint(i,e)}/></g>})}{elements.map(el=>{const p=toSvg(el),sel=selectedElement===el.id;return <g key={el.id} transform={`translate(${p.x} ${p.y})`} className={`ceiling-element ${sel?'selected-element':''}`} onPointerDown={e=>{e.stopPropagation();setSelectedElement(el.id)}} onPointerMove={e=>sel&&moveElement(el.id,e)}>{el.type==='spot'&&<><circle r="14" className="spot-symbol"/><circle r="4" className="spot-core"/></>}{el.type==='chandelier'&&<><circle r="22" className="chandelier-symbol"/><path d="M-12 8 Q0 -8 12 8 M-8 12 Q0 0 8 12" className="chandelier-lines"/></>}{el.type==='cornice'&&<><rect x="-55" y="-7" width="110" height="14" rx="7" className="cornice-symbol"/><text y="-15" textAnchor="middle" className="element-label">карниз</text></>}</g>})}<text x={SVG_W/2} y={SVG_H/2+8} className="area-text" textAnchor="middle">{area.toFixed(2)} м²</text></svg></div></div>
+ <aside className="panel right-panel"><div className="panel-title">Параметры</div><div className="stat"><span>Площадь</span><strong>{area.toFixed(2)} м²</strong></div><div className="stat"><span>Периметр</span><strong>{perimeter.toFixed(2)} м</strong></div><div className="stat"><span>Углы</span><strong>{points.length}</strong></div><div className="stat"><span>Элементы</span><strong>{elements.length}</strong></div>{selectedElement!==null&&<div className="selected-info">Выбрано: {labels[elements.find(e=>e.id===selectedElement)?.type||'spot']}</div>}<div className="divider"/><div className="section-title">Смета</div><div className="estimate-lines">{estimate.lines.map(item=><div className="estimate-line" key={item.name}><span>{item.name}<small>{item.quantity.toFixed(2)} {item.unit} × {item.unitPrice.toFixed(0)}</small></span><strong>{item.total.toFixed(0)} ₽</strong></div>)}</div><div className="price-grid"><label>Полотно, ₽/м²<input type="number" value={prices.canvasPricePerM2} onChange={e=>setPrice('canvasPricePerM2',Number(e.target.value))}/></label><label>Профиль, ₽/м<input type="number" value={prices.profilePricePerM} onChange={e=>setPrice('profilePricePerM',Number(e.target.value))}/></label><label>Вставка, ₽/м<input type="number" value={prices.insertPricePerM} onChange={e=>setPrice('insertPricePerM',Number(e.target.value))}/></label><label>Крепёж, ₽/м<input type="number" value={prices.fastenerPricePerM} onChange={e=>setPrice('fastenerPricePerM',Number(e.target.value))}/></label><label>Светильник, ₽/шт<input type="number" value={prices.spotlightPrice} onChange={e=>setPrice('spotlightPrice',Number(e.target.value))}/></label><label>Люстра, ₽/шт<input type="number" value={prices.chandelierPrice} onChange={e=>setPrice('chandelierPrice',Number(e.target.value))}/></label><label>Карниз, ₽/м<input type="number" value={prices.cornicePricePerM} onChange={e=>setPrice('cornicePricePerM',Number(e.target.value))}/></label><label>Запас, %<input type="number" min="0" value={prices.wastePercent} onChange={e=>setPrice('wastePercent',Number(e.target.value))}/></label></div><div className="estimate-total"><span>Итого</span><strong>{estimate.total.toFixed(0)} ₽</strong></div></aside></section>
+ {showProjects&&<div className="modal-backdrop" onClick={()=>setShowProjects(false)}><div className="projects-modal" onClick={e=>e.stopPropagation()}><div className="modal-head"><strong>Мои проекты</strong><button className="ghost" onClick={()=>setShowProjects(false)}>Закрыть</button></div>{projects.length===0?<div className="empty-projects">Сохранённых проектов пока нет.</div>:<div className="project-list">{projects.map(p=><div className="project-card" key={p.id}><div><strong>{p.name}</strong><small>{new Date(p.updatedAt).toLocaleString('ru-RU')} · {p.points.length} углов · {p.elements.length} элементов</small></div><div className="project-actions"><button className="primary" onClick={()=>openProject(p)}>Открыть</button><button className="delete-feature" onClick={()=>removeProject(p.id)}>Удалить</button></div></div>)}</div>}</div></div>}
+ </main>
 }
