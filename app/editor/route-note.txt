@@ -1,0 +1,1 @@
+Professional editor route is available at /editor.
