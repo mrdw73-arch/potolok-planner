@@ -1,6 +1,25 @@
+import { CatalogItem, ProjectEvent, ProjectStatus, ProjectTask, ProjectTransaction } from './ceiling-model';
+import { CeilingVariant } from './ceiling-model';
+
 export type ProjectPoint = { x: number; y: number };
-export type ProjectElementType = 'spot' | 'chandelier' | 'cornice';
-export type ProjectElement = { id: number; type: ProjectElementType; x: number; y: number };
+export type ProjectElementType = 'spot' | 'chandelier' | 'cornice' | 'light-line' | 'profile' | 'niche' | 'opening' | 'sensor' | 'smoke-detector' | 'annotation';
+export type ProjectElement = {
+  id: number;
+  type: ProjectElementType;
+  x: number;
+  y: number;
+  x2?: number;
+  y2?: number;
+  name?: string;
+  label?: string;
+  color?: string;
+  size?: number;
+  quantity?: number;
+  unit?: 'шт' | 'м' | 'м²';
+  manualLength?: number;
+  price?: number;
+  materialOrWork?: 'material' | 'work';
+};
 export type ProjectPrices = {
   canvasPricePerM2: number;
   profilePricePerM: number;
@@ -22,6 +41,14 @@ export type CeilingProject = {
   prices: ProjectPrices;
   client: ProjectClient;
   notes: string;
+  status?: ProjectStatus;
+  variants?: CeilingVariant[];
+  activeVariantId?: string;
+  catalog?: CatalogItem[];
+  transactions?: ProjectTransaction[];
+  tasks?: ProjectTask[];
+  events?: ProjectEvent[];
+  photos?: string[];
 };
 
 const STORAGE_KEY = 'potolok-planner-projects';
@@ -62,6 +89,16 @@ export function duplicateProject(project: CeilingProject): CeilingProject {
     elements: project.elements.map((element) => ({ ...element })),
     prices: { ...project.prices },
     client: { ...project.client },
+    variants: project.variants?.map((variant) => ({
+      ...variant,
+      points: variant.points.map((point) => ({ ...point })),
+      elements: variant.elements.map((element) => ({ ...element })),
+    })),
+    catalog: project.catalog?.map((item) => ({ ...item })),
+    transactions: project.transactions?.map((item) => ({ ...item })),
+    tasks: project.tasks?.map((item) => ({ ...item })),
+    events: project.events?.map((item) => ({ ...item })),
+    photos: project.photos ? [...project.photos] : undefined,
   };
 }
 
@@ -69,7 +106,7 @@ export function exportProjectsJson(projects = loadProjects()) {
   return JSON.stringify(
     {
       format: 'potolok-planner',
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       projects,
     },
