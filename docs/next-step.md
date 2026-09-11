@@ -1,0 +1,1 @@
+Next integration step: replace the legacy drawing layer on `/` with the professional editor components after browser/build verification, then connect catalog, variants, estimate documents, tasks/calendar and finance panels to Supabase-backed project data.
