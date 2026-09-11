@@ -10,7 +10,9 @@ export type ProjectPrices = {
   chandelierPrice: number;
   cornicePricePerM: number;
   wastePercent: number;
+  laborPricePerM2: number;
 };
+export type ProjectClient = { name: string; phone: string; address: string };
 export type CeilingProject = {
   id: string;
   name: string;
@@ -18,6 +20,8 @@ export type CeilingProject = {
   points: ProjectPoint[];
   elements: ProjectElement[];
   prices: ProjectPrices;
+  client: ProjectClient;
+  notes: string;
 };
 
 const STORAGE_KEY = 'potolok-planner-projects';
