@@ -1,6 +1,14 @@
 export type ProjectPoint = { x: number; y: number };
 export type ProjectElementType = 'spot' | 'chandelier' | 'cornice';
-export type ProjectElement = { id: number; type: ProjectElementType; x: number; y: number };
+export type ProjectElement = {
+  id: number;
+  type: ProjectElementType;
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  price?: number;
+};
 export type ProjectPrices = {
   canvasPricePerM2: number;
   profilePricePerM: number;
@@ -84,7 +92,7 @@ export function exportProjectsJson(projects = loadProjects()) {
   return JSON.stringify(
     {
       format: 'potolok-planner',
-      version: 3,
+      version: 4,
       exportedAt: new Date().toISOString(),
       projects,
     },
@@ -109,7 +117,10 @@ function isProject(value: unknown): value is CeilingProject {
       Number.isFinite(element?.id) &&
       ['spot', 'chandelier', 'cornice'].includes(element?.type ?? '') &&
       Number.isFinite(element?.x) &&
-      Number.isFinite(element?.y),
+      Number.isFinite(element?.y) &&
+      (element?.width === undefined || Number.isFinite(element.width)) &&
+      (element?.height === undefined || Number.isFinite(element.height)) &&
+      (element?.price === undefined || Number.isFinite(element.price)),
     )
   );
 }
