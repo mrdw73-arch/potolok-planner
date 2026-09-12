@@ -45,11 +45,6 @@ export function snapPoint(point: Point, step: number) {
   return { x: snap(point.x, step), y: snap(point.y, step) };
 }
 
-/**
- * Changes one wall while keeping its start vertex fixed and moving the end
- * vertex along the current wall direction. The following vertex is translated
- * by the same delta, preserving the adjacent wall's direction.
- */
 export function resizeWallKeepingAdjacent(
   points: Point[],
   index: number,
@@ -83,12 +78,6 @@ export function resizeWallKeepingAdjacent(
   });
 }
 
-/**
- * Returns a room with axis-aligned walls while preserving the first corner.
- * Intended for rectangular/orthogonal room mode. For each edge the dominant
- * direction is kept: horizontal edges stay horizontal, vertical edges stay
- * vertical. The final vertex is recalculated so the polygon closes cleanly.
- */
 export function orthogonalizeRoom(points: Point[]): Point[] {
   if (points.length < 4) return points;
 
@@ -110,10 +99,40 @@ export function orthogonalizeRoom(points: Point[]): Point[] {
 
   const last = result[result.length - 1];
   result[0] = anchor;
-  result[result.length - 1] = {
-    x: anchor.x,
-    y: last.y,
-  };
-
+  result[result.length - 1] = { x: anchor.x, y: last.y };
   return result;
+}
+
+/**
+ * Resizes a 4-corner orthogonal room and keeps the opposite wall synchronized.
+ * The expected order is clockwise or counter-clockwise around the room.
+ */
+export function resizeOrthogonalWall(points: Point[], index: number, lengthMm: number): Point[] {
+  if (points.length !== 4 || !Number.isFinite(lengthMm) || lengthMm <= 0) return points;
+
+  const next = (index + 1) % 4;
+  const opposite = (index + 2) % 4;
+  const oppositeNext = (index + 3) % 4;
+  const result = points.map((point) => ({ ...point }));
+  const start = points[index];
+  const end = points[next];
+  const horizontal = Math.abs(end.x - start.x) >= Math.abs(end.y - start.y);
+
+  if (horizontal) {
+    const direction = end.x >= start.x ? 1 : -1;
+    const newEndX = Math.round(start.x + direction * lengthMm);
+    const delta = newEndX - end.x;
+    result[next] = { x: newEndX, y: start.y };
+    result[opposite] = { x: points[opposite].x + delta, y: points[opposite].y };
+    result[oppositeNext] = { x: points[oppositeNext].x + delta, y: points[oppositeNext].y };
+  } else {
+    const direction = end.y >= start.y ? 1 : -1;
+    const newEndY = Math.round(start.y + direction * lengthMm);
+    const delta = newEndY - end.y;
+    result[next] = { x: start.x, y: newEndY };
+    result[opposite] = { x: points[opposite].x, y: points[opposite].y + delta };
+    result[oppositeNext] = { x: points[oppositeNext].x, y: points[oppositeNext].y + delta };
+  }
+
+  return orthogonalizeRoom(result);
 }
