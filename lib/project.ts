@@ -34,6 +34,7 @@ export type CeilingProject = {
   variants?: ProjectVariant[];
   activeVariantId?: string;
   quantityOverrides?: Record<string, number>;
+  orthogonalMode?: boolean;
 };
 
 const STORAGE_KEY = 'potolok-planner-projects';
@@ -85,6 +86,7 @@ export function duplicateProject(project: CeilingProject): CeilingProject {
     notes: project.notes,
     variants: project.variants?.map((variant) => ({ ...variant })),
     quantityOverrides: project.quantityOverrides ? { ...project.quantityOverrides } : undefined,
+    orthogonalMode: project.orthogonalMode ?? false,
   };
 }
 
@@ -92,7 +94,7 @@ export function exportProjectsJson(projects = loadProjects()) {
   return JSON.stringify(
     {
       format: 'potolok-planner',
-      version: 4,
+      version: 5,
       exportedAt: new Date().toISOString(),
       projects,
     },
@@ -121,7 +123,8 @@ function isProject(value: unknown): value is CeilingProject {
       (element?.width === undefined || Number.isFinite(element.width)) &&
       (element?.height === undefined || Number.isFinite(element.height)) &&
       (element?.price === undefined || Number.isFinite(element.price)),
-    )
+    ) &&
+    (p.orthogonalMode === undefined || typeof p.orthogonalMode === 'boolean')
   );
 }
 
