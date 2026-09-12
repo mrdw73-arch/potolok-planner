@@ -48,8 +48,7 @@ export function snapPoint(point: Point, step: number) {
 /**
  * Changes one wall while keeping its start vertex fixed and moving the end
  * vertex along the current wall direction. The following vertex is translated
- * by the same delta, preserving the adjacent wall's direction and avoiding a
- * global distortion of the room.
+ * by the same delta, preserving the adjacent wall's direction.
  */
 export function resizeWallKeepingAdjacent(
   points: Point[],
@@ -82,4 +81,39 @@ export function resizeWallKeepingAdjacent(
     if (pointIndex === followingIndex) return nextFollowing;
     return point;
   });
+}
+
+/**
+ * Returns a room with axis-aligned walls while preserving the first corner.
+ * Intended for rectangular/orthogonal room mode. For each edge the dominant
+ * direction is kept: horizontal edges stay horizontal, vertical edges stay
+ * vertical. The final vertex is recalculated so the polygon closes cleanly.
+ */
+export function orthogonalizeRoom(points: Point[]): Point[] {
+  if (points.length < 4) return points;
+
+  const result = points.map((point) => ({ ...point }));
+  const anchor = result[0];
+
+  for (let i = 1; i < result.length; i += 1) {
+    const previous = result[i - 1];
+    const original = points[i];
+    const dx = original.x - points[i - 1].x;
+    const dy = original.y - points[i - 1].y;
+
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      result[i] = { x: original.x, y: previous.y };
+    } else {
+      result[i] = { x: previous.x, y: original.y };
+    }
+  }
+
+  const last = result[result.length - 1];
+  result[0] = anchor;
+  result[result.length - 1] = {
+    x: anchor.x,
+    y: last.y,
+  };
+
+  return result;
 }
