@@ -44,3 +44,42 @@ export function snap(value: number, step: number) {
 export function snapPoint(point: Point, step: number) {
   return { x: snap(point.x, step), y: snap(point.y, step) };
 }
+
+/**
+ * Changes one wall while keeping its start vertex fixed and moving the end
+ * vertex along the current wall direction. The following vertex is translated
+ * by the same delta, preserving the adjacent wall's direction and avoiding a
+ * global distortion of the room.
+ */
+export function resizeWallKeepingAdjacent(
+  points: Point[],
+  index: number,
+  lengthMm: number,
+): Point[] {
+  if (points.length < 3 || !Number.isFinite(lengthMm) || lengthMm <= 0) return points;
+
+  const nextIndex = (index + 1) % points.length;
+  const followingIndex = (nextIndex + 1) % points.length;
+  const start = points[index];
+  const end = points[nextIndex];
+  const following = points[followingIndex];
+  const currentLength = distance(start, end);
+  if (!currentLength) return points;
+
+  const scale = lengthMm / currentLength;
+  const nextEnd = {
+    x: Math.round(start.x + (end.x - start.x) * scale),
+    y: Math.round(start.y + (end.y - start.y) * scale),
+  };
+  const delta = { x: nextEnd.x - end.x, y: nextEnd.y - end.y };
+  const nextFollowing = {
+    x: Math.round(following.x + delta.x),
+    y: Math.round(following.y + delta.y),
+  };
+
+  return points.map((point, pointIndex) => {
+    if (pointIndex === nextIndex) return nextEnd;
+    if (pointIndex === followingIndex) return nextFollowing;
+    return point;
+  });
+}
