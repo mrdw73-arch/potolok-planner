@@ -31,7 +31,8 @@ export function loadProjects(): CeilingProject[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isProject);
   } catch {
     return [];
   }
@@ -39,11 +40,18 @@ export function loadProjects(): CeilingProject[] {
 
 export function saveProjects(projects: CeilingProject[]) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+  } catch {
+    // Storage can be unavailable or full; keep the current UI usable.
+  }
 }
 
 export function createProjectId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export function upsertProject(project: CeilingProject, projects = loadProjects()) {
@@ -62,6 +70,7 @@ export function duplicateProject(project: CeilingProject): CeilingProject {
     elements: project.elements.map((element) => ({ ...element })),
     prices: { ...project.prices },
     client: { ...project.client },
+    notes: project.notes,
   };
 }
 
@@ -69,7 +78,7 @@ export function exportProjectsJson(projects = loadProjects()) {
   return JSON.stringify(
     {
       format: 'potolok-planner',
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       projects,
     },
@@ -78,29 +87,56 @@ export function exportProjectsJson(projects = loadProjects()) {
   );
 }
 
+function isProject(value: unknown): value is CeilingProject {
+  if (!value || typeof value !== 'object') return false;
+  const p = value as Partial<CeilingProject>;
+  return (
+    typeof p.id === 'string' &&
+    typeof p.name === 'string' &&
+    typeof p.updatedAt === 'string' &&
+    !Number.isNaN(Date.parse(p.updatedAt)) &&
+    Array.isArray(p.points) &&
+    p.points.length >= 3 &&
+    p.points.every((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y)) &&
+    Array.isArray(p.elements) &&
+    p.elements.every((element) =>
+      Number.isFinite(element?.id) &&
+      ['spot', 'chandelier', 'cornice'].includes(element?.type ?? '') &&
+      Number.isFinite(element?.x) &&
+      Number.isFinite(element?.y),
+    )
+  );
+}
+
+function newerProject(a: CeilingProject, b: CeilingProject) {
+  return Date.parse(a.updatedAt) >= Date.parse(b.updatedAt) ? a : b;
+}
+
 export function importProjectsJson(raw: string, existing = loadProjects()) {
-  const parsed = JSON.parse(raw) as {
-    format?: string;
-    version?: number;
-    projects?: CeilingProject[];
-  };
+  let parsed: { format?: string; version?: number; projects?: unknown[] };
+  try {
+    parsed = JSON.parse(raw) as { format?: string; version?: number; projects?: unknown[] };
+  } catch {
+    throw new Error('Файл резервной копии повреждён или имеет неверный JSON');
+  }
+
   if (parsed.format !== 'potolok-planner' || !Array.isArray(parsed.projects)) {
     throw new Error('Неверный файл резервной копии Potolok Planner');
   }
 
-  const valid = parsed.projects.filter(
-    (project) =>
-      project &&
-      typeof project.id === 'string' &&
-      typeof project.name === 'string' &&
-      Array.isArray(project.points) &&
-      Array.isArray(project.elements),
-  );
+  const valid = parsed.projects.filter(isProject);
+  if (!valid.length && parsed.projects.length) {
+    throw new Error('В резервной копии нет корректных проектов');
+  }
 
   const byId = new Map(existing.map((project) => [project.id, project]));
-  valid.forEach((project) => byId.set(project.id, project));
+  for (const project of valid) {
+    const current = byId.get(project.id);
+    byId.set(project.id, current ? newerProject(current, project) : project);
+  }
+
   const next = Array.from(byId.values()).sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
   );
   saveProjects(next);
   return next;
