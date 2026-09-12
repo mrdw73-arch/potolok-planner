@@ -13,6 +13,7 @@ export type ProjectPrices = {
   laborPricePerM2: number;
 };
 export type ProjectClient = { name: string; phone: string; address: string };
+export type ProjectVariant = { id: string; name: string; price: number };
 export type CeilingProject = {
   id: string;
   name: string;
@@ -22,6 +23,9 @@ export type CeilingProject = {
   prices: ProjectPrices;
   client: ProjectClient;
   notes: string;
+  variants?: ProjectVariant[];
+  activeVariantId?: string;
+  quantityOverrides?: Record<string, number>;
 };
 
 const STORAGE_KEY = 'potolok-planner-projects';
@@ -71,6 +75,8 @@ export function duplicateProject(project: CeilingProject): CeilingProject {
     prices: { ...project.prices },
     client: { ...project.client },
     notes: project.notes,
+    variants: project.variants?.map((variant) => ({ ...variant })),
+    quantityOverrides: project.quantityOverrides ? { ...project.quantityOverrides } : undefined,
   };
 }
 
@@ -78,7 +84,7 @@ export function exportProjectsJson(projects = loadProjects()) {
   return JSON.stringify(
     {
       format: 'potolok-planner',
-      version: 2,
+      version: 3,
       exportedAt: new Date().toISOString(),
       projects,
     },
