@@ -9,7 +9,7 @@
 .planner-project label { display: block; font-size: 11px; color: #8b9098; margin-bottom: 3px; }
 .planner-project input { width: 100%; border: 0; outline: 0; font-size: 16px; font-weight: 650; background: transparent; }
 .planner-actions { margin-left: auto; display: flex; gap: 8px; }
-.planner-actions button, .planner-toolbar button, .element-btn { border: 1px solid #dfe2e7; background: #fff; border-radius: 9px; padding: 9px 13px; font-weight: 650; cursor: pointer; }
+.planner-actions button, .planner-toolbar button, .element-btn, .drawing-toolbar button { border: 1px solid #dfe2e7; background: #fff; border-radius: 9px; padding: 9px 13px; font-weight: 650; cursor: pointer; }
 .primary { background: #17191d !important; color: #fff; border-color: #17191d !important; }
 .planner-toolbar { height: 58px; display: flex; align-items: center; gap: 8px; padding: 0 28px; background: #fff; border-bottom: 1px solid #e5e7eb; }
 .planner-toolbar button { border: 0; background: transparent; color: #70757d; }
@@ -33,10 +33,28 @@
 .canvas-panel { display: flex; flex-direction: column; min-width: 0; }
 .canvas-head, .canvas-footer { display: flex; justify-content: space-between; padding: 14px 18px; font-size: 12px; color: #727780; background: #fff; border-bottom: 1px solid #e5e7eb; }
 .canvas-head span:first-child { color: #25282d; font-weight: 750; }
-.drawing-area { flex: 1; display: grid; place-items: center; padding: 40px; background-image: linear-gradient(#e7e9ed 1px, transparent 1px), linear-gradient(90deg, #e7e9ed 1px, transparent 1px); background-size: 32px 32px; overflow: auto; }
-.room-drawing { width: min(78%, 760px); min-width: 360px; border: 3px solid #25282d; box-shadow: 0 20px 50px rgba(20, 24, 30, .12); background: #fff; position: relative; }
-.room-fill { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; color: #777c84; font-size: 12px; }
-.room-fill strong { font-size: 24px; color: #17191d; }
+.drawing-area { flex: 1; display: grid; place-items: center; padding: 24px; background-image: linear-gradient(#e7e9ed 1px, transparent 1px), linear-gradient(90deg, #e7e9ed 1px, transparent 1px); background-size: 32px 32px; overflow: auto; }
+.interactive-room { width: min(100%, 820px); }
+.drawing-toolbar { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.tool-group { display: flex; gap: 8px; flex-wrap: wrap; }
+.drawing-toolbar button { padding: 7px 10px; font-size: 12px; }
+.danger-button { color: #a22; }
+.room-svg { display: block; width: 100%; min-height: 420px; background: rgba(255,255,255,.82); border: 1px solid #dfe2e7; border-radius: 12px; touch-action: none; overflow: visible; }
+.room-shape { fill: rgba(255,255,255,.9); stroke: #25282d; stroke-width: 4; filter: drop-shadow(0 15px 22px rgba(20,24,30,.12)); }
+.corner-handle { fill: #fff; stroke: #17191d; stroke-width: 3; cursor: grab; }
+.corner-handle:active { cursor: grabbing; }
+.dimension-text { fill: #555b63; font-size: 15px; font-weight: 750; }
+.ceiling-element { cursor: grab; fill: #fff; stroke: #25282d; stroke-width: 2.5; }
+.ceiling-element:active { cursor: grabbing; }
+.ceiling-element text { stroke: none; fill: #555b63; font-size: 11px; font-weight: 700; pointer-events: none; }
+.ceiling-element.selected { stroke-width: 4; }
+.element-core { fill: #25282d; stroke: none; }
+.drawing-footer { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+.drawing-footer div { padding: 10px 12px; background: #fff; border: 1px solid #e5e7eb; border-radius: 9px; }
+.drawing-footer strong, .drawing-footer span { display: block; }
+.drawing-footer strong { font-size: 14px; }
+.drawing-footer span { margin-top: 2px; color: #858a92; font-size: 10px; }
+.drawing-hint { color: #858a92; font-size: 11px; margin: 9px 2px 0; }
 .scale { color: #999da4; }
 .canvas-footer { border-top: 1px solid #e5e7eb; border-bottom: 0; }
 .estimate-line { display: flex; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid #eef0f2; font-size: 13px; }
@@ -47,5 +65,5 @@
 .estimate-total strong { margin-top: 5px; font-size: 23px; }
 .full { width: 100%; padding: 12px; border-radius: 9px; border: 0; cursor: pointer; font-weight: 750; }
 @media (max-width: 1050px) { .planner-grid { grid-template-columns: 230px minmax(360px, 1fr); } .estimate-panel { display: none; } }
-@media (max-width: 720px) { .planner-header { padding: 0 14px; gap: 12px; } .planner-brand { min-width: auto; } .planner-brand > div:last-child { display: none; } .planner-project { max-width: 220px; } .planner-actions button:first-child { display: none; } .planner-grid { grid-template-columns: 1fr; } .planner-sidebar { border-right: 0; border-bottom: 1px solid #e5e7eb; } .drawing-area { min-height: 420px; padding: 20px; } }
-@media print { .planner-sidebar, .planner-toolbar, .planner-actions, .estimate-panel { display: none !important; } .planner-grid { display: block; } .canvas-panel { min-height: 100vh; } }
+@media (max-width: 720px) { .planner-header { padding: 0 14px; gap: 12px; } .planner-brand { min-width: auto; } .planner-brand > div:last-child { display: none; } .planner-project { max-width: 220px; } .planner-actions button:first-child { display: none; } .planner-grid { grid-template-columns: 1fr; } .planner-sidebar { border-right: 0; border-bottom: 1px solid #e5e7eb; } .drawing-area { min-height: 420px; padding: 12px; } .room-svg { min-height: 360px; } .drawing-footer { grid-template-columns: 1fr 1fr; } }
+@media print { .planner-sidebar, .planner-toolbar, .planner-actions, .estimate-panel, .drawing-toolbar { display: none !important; } .planner-grid { display: block; } .canvas-panel { min-height: 100vh; } }
