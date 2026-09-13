@@ -59,22 +59,22 @@ export default function PlannerWorkspace() {
             <div><span>Периметр</span><b>{perimeter.toFixed(2)} м</b></div>
           </div>
           <div className="panel-divider" />
+          <div className="panel-title">Редактор формы</div>
+          <div className="hint">Для Г-образных помещений используйте инструменты прямо над планом: «Г-образная», «＋ Точка» и «− Точка».</div>
+          <div className="panel-divider" />
           <div className="panel-title">Элементы</div>
-          <button className="element-btn" onClick={() => window.dispatchEvent(new CustomEvent('planner:add-element', { detail: 'spot' }))}>＋ Точечный светильник</button>
-          <button className="element-btn" onClick={() => window.dispatchEvent(new CustomEvent('planner:add-element', { detail: 'chandelier' }))}>＋ Люстра</button>
-          <button className="element-btn" onClick={() => window.dispatchEvent(new CustomEvent('planner:add-element', { detail: 'cornice' }))}>＋ Карниз</button>
-          <div className="hint">Перетаскивайте углы и элементы прямо на плане. Выбранный элемент можно удалить.</div>
+          <div className="hint">Добавление светильников, люстры и карниза выполняется на плане. Элементы можно перетаскивать и удалять.</div>
         </aside>
 
         <section className="canvas-panel">
-          <div className="canvas-head"><span>Интерактивный план помещения</span><span className="scale">Сетка 100 мм · авто-масштаб</span></div>
+          <div className="canvas-head"><span>Интерактивный план помещения</span><span className="scale">Сетка · авто-масштаб · мм</span></div>
           <div className="drawing-area">
-            <InteractiveRoom width={room.width / 10} length={room.height / 10} onDimensionsChange={(width, length) => {
-              setRoom({ width: Math.round(width * 10), height: Math.round(length * 10) });
+            <InteractiveRoom width={room.width} length={room.height} onDimensionsChange={(width, length) => {
+              setRoom({ width: Math.round(width), height: Math.round(length) });
               setSaved(false);
             }} />
           </div>
-          <div className="canvas-footer"><span>● Привязка к углам включена</span><span>Перетаскивание: углы / свет / карниз</span></div>
+          <div className="canvas-footer"><span>● Привязка к вершинам включена</span><span>Перетаскивание: вершины / свет / карниз</span></div>
         </section>
 
         <aside className="estimate-panel">
@@ -85,7 +85,7 @@ export default function PlannerWorkspace() {
           <div className="estimate-line"><span>Монтаж</span><b>{area.toFixed(1)} м²</b></div>
           <div className="estimate-total"><span>Итого ориентировочно</span><strong>{Math.round(area * 900 + perimeter * 350 + area * 500).toLocaleString('ru-RU')} ₽</strong></div>
           <button className="primary full">Открыть подробную смету →</button>
-          <div className="estimate-note">Расчёт предварительный. Цены и коэффициенты можно настроить в каталоге.</div>
+          <div className="estimate-note">Для сложной геометрии площадь плана считается по вершинам; подробная смета будет использовать эти значения после выбора материалов и коэффициентов.</div>
         </aside>
       </div>
     </main>
