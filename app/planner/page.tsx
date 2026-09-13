@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import './planner.css';
+import InteractiveRoom from './InteractiveRoom';
 
 type Mode = 'room' | 'lights' | 'price';
 
@@ -59,24 +60,21 @@ export default function PlannerWorkspace() {
           </div>
           <div className="panel-divider" />
           <div className="panel-title">Элементы</div>
-          <button className="element-btn">＋ Точечный светильник</button>
-          <button className="element-btn">＋ Люстра</button>
-          <button className="element-btn">＋ Карниз</button>
-          <div className="hint">Следующим этапом элементы станут интерактивными и будут участвовать в смете.</div>
+          <button className="element-btn" onClick={() => window.dispatchEvent(new CustomEvent('planner:add-element', { detail: 'spot' }))}>＋ Точечный светильник</button>
+          <button className="element-btn" onClick={() => window.dispatchEvent(new CustomEvent('planner:add-element', { detail: 'chandelier' }))}>＋ Люстра</button>
+          <button className="element-btn" onClick={() => window.dispatchEvent(new CustomEvent('planner:add-element', { detail: 'cornice' }))}>＋ Карниз</button>
+          <div className="hint">Перетаскивайте углы и элементы прямо на плане. Выбранный элемент можно удалить.</div>
         </aside>
 
         <section className="canvas-panel">
-          <div className="canvas-head"><span>План помещения</span><span className="scale">Масштаб: авто</span></div>
+          <div className="canvas-head"><span>Интерактивный план помещения</span><span className="scale">Сетка 100 мм · авто-масштаб</span></div>
           <div className="drawing-area">
-            <div className="room-drawing" style={{ aspectRatio: `${room.width} / ${room.height}` }}>
-              <div className="room-fill">
-                <span>{room.width} мм</span>
-                <strong>{area.toFixed(2)} м²</strong>
-                <span>{room.height} мм</span>
-              </div>
-            </div>
+            <InteractiveRoom width={room.width / 10} length={room.height / 10} onDimensionsChange={(width, length) => {
+              setRoom({ width: Math.round(width * 10), height: Math.round(length * 10) });
+              setSaved(false);
+            }} />
           </div>
-          <div className="canvas-footer"><span>● Привязка к углам включена</span><span>Сетка 100 мм</span></div>
+          <div className="canvas-footer"><span>● Привязка к углам включена</span><span>Перетаскивание: углы / свет / карниз</span></div>
         </section>
 
         <aside className="estimate-panel">
