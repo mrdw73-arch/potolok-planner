@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 type Point = { x: number; y: number }
 type ElementType = 'spot' | 'chandelier' | 'cornice'
@@ -29,8 +29,18 @@ export default function InteractiveRoom({ width, length, onDimensionsChange }: {
     return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) }
   }, [corners])
 
-  const scaleX = (room.maxX - room.minX) / Math.max(width, 1)
-  const scaleY = (room.maxY - room.minY) / Math.max(length, 1)
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const type = (event as CustomEvent<ElementType>).detail
+      if (type === 'spot' || type === 'chandelier' || type === 'cornice') {
+        const id = Date.now() + Math.random()
+        setElements((items) => [...items, { id, type, x: (room.minX + room.maxX) / 2, y: (room.minY + room.maxY) / 2 }])
+        setSelectedId(id)
+      }
+    }
+    window.addEventListener('planner:add-element', handler)
+    return () => window.removeEventListener('planner:add-element', handler)
+  }, [room.maxX, room.maxY, room.minX, room.minY])
 
   const moveCorner = (index: number, x: number, y: number) => {
     setCorners((current) => current.map((point, i) => {
@@ -65,8 +75,18 @@ export default function InteractiveRoom({ width, length, onDimensionsChange }: {
     }
   }
 
+  const finishCornerDrag = () => {
+    if (dragCorner !== null) {
+      const nextWidth = Math.max(100, Math.round((room.maxX - room.minX) / 0.1))
+      const nextLength = Math.max(100, Math.round((room.maxY - room.minY) / 0.1))
+      onDimensionsChange(nextWidth, nextLength)
+    }
+    setDragCorner(null)
+    setDragElement(null)
+  }
+
   const addElement = (type: ElementType) => {
-    const id = Date.now()
+    const id = Date.now() + Math.random()
     setElements((items) => [...items, { id, type, x: (room.minX + room.maxX) / 2, y: (room.minY + room.maxY) / 2 }])
     setSelectedId(id)
   }
@@ -78,8 +98,8 @@ export default function InteractiveRoom({ width, length, onDimensionsChange }: {
   }
 
   const selected = elements.find((item) => item.id === selectedId)
-  const area = width * length
-  const perimeter = 2 * (width + length)
+  const area = width * length / 10000
+  const perimeter = 2 * (width + length) / 100
 
   return (
     <div className="interactive-room">
@@ -96,38 +116,22 @@ export default function InteractiveRoom({ width, length, onDimensionsChange }: {
         className="room-svg"
         viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`}
         onPointerMove={handlePointerMove}
-        onPointerUp={() => { setDragCorner(null); setDragElement(null) }}
-        onPointerLeave={() => { setDragCorner(null); setDragElement(null) }}
+        onPointerUp={finishCornerDrag}
+        onPointerLeave={finishCornerDrag}
       >
-        <defs>
-          <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
-            <path d="M 24 0 L 0 0 0 24" fill="none" stroke="currentColor" strokeOpacity=".08" strokeWidth="1" />
-          </pattern>
-        </defs>
+        <defs><pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M 24 0 L 0 0 0 24" fill="none" stroke="currentColor" strokeOpacity=".08" strokeWidth="1" /></pattern></defs>
         <rect width={CANVAS_W} height={CANVAS_H} fill="url(#grid)" />
         <polygon points={corners.map((p) => `${p.x},${p.y}`).join(' ')} className="room-shape" />
 
         {corners.map((point, index) => (
-          <circle
-            key={`corner-${index}`}
-            cx={point.x}
-            cy={point.y}
-            r="9"
-            className="corner-handle"
-            onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); setDragCorner(index) }}
-          />
+          <circle key={`corner-${index}`} cx={point.x} cy={point.y} r="9" className="corner-handle" onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); setDragCorner(index) }} />
         ))}
 
-        <text x={(room.minX + room.maxX) / 2} y={room.minY - 22} className="dimension-text" textAnchor="middle">{width} см</text>
-        <text x={room.minX - 28} y={(room.minY + room.maxY) / 2} className="dimension-text" textAnchor="middle" transform={`rotate(-90 ${room.minX - 28} ${(room.minY + room.maxY) / 2})`}>{length} см</text>
+        <text x={(room.minX + room.maxX) / 2} y={room.minY - 22} className="dimension-text" textAnchor="middle">{width} мм</text>
+        <text x={room.minX - 28} y={(room.minY + room.maxY) / 2} className="dimension-text" textAnchor="middle" transform={`rotate(-90 ${room.minX - 28} ${(room.minY + room.maxY) / 2})`}>{length} мм</text>
 
         {elements.map((item) => (
-          <g
-            key={item.id}
-            transform={`translate(${item.x} ${item.y})`}
-            onPointerDown={(event) => { event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId); setSelectedId(item.id); setDragElement(item.id) }}
-            className={`ceiling-element ${selectedId === item.id ? 'selected' : ''}`}
-          >
+          <g key={item.id} transform={`translate(${item.x} ${item.y})`} onPointerDown={(event) => { event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId); setSelectedId(item.id); setDragElement(item.id) }} className={`ceiling-element ${selectedId === item.id ? 'selected' : ''}`}>
             {item.type === 'spot' && <><circle r="15" /><circle r="5" className="element-core" /></>}
             {item.type === 'chandelier' && <><circle r="24" /><path d="M-13 4 L13 4 M-8 10 L8 10" /></>}
             {item.type === 'cornice' && <rect x="-22" y="-8" width="44" height="16" rx="4" />}
@@ -142,7 +146,7 @@ export default function InteractiveRoom({ width, length, onDimensionsChange }: {
         <div><strong>{elements.filter((e) => e.type === 'spot').length}</strong><span>точечных</span></div>
         <div><strong>{elements.filter((e) => e.type === 'chandelier').length}</strong><span>люстр</span></div>
       </div>
-      <p className="drawing-hint">Перетаскивайте углы для изменения формы. Элементы потолка можно перемещать мышью.</p>
+      <p className="drawing-hint">Перетаскивайте углы для изменения размеров. Элементы потолка можно перемещать мышью.</p>
     </div>
   )
 }
