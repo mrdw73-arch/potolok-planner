@@ -1,4 +1,4 @@
-import { Point, snapPoint } from './geometry';
+import { Point, snapPoint } from '../geometry';
 
 export type SnapStep = 0 | 10 | 50 | 100;
 
