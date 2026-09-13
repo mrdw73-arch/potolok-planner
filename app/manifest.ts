@@ -12,6 +12,6 @@ export default function manifest(): MetadataRoute.Manifest {
     lang: 'ru',
     orientation: 'portrait-primary',
     categories: ['business', 'productivity', 'utilities'],
-    icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }],
+    icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
   };
 }
