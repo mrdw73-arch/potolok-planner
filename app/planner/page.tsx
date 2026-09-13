@@ -10,18 +10,21 @@ const initialRoom = { width: 5000, height: 3600 };
 
 export default function PlannerWorkspace() {
   const [room, setRoom] = useState(initialRoom);
+  const [geometry, setGeometry] = useState({ area: 18, perimeter: 17.2 });
   const [mode, setMode] = useState<Mode>('room');
   const [projectName, setProjectName] = useState('Новая комната');
   const [saved, setSaved] = useState(false);
 
-  const area = useMemo(() => (room.width * room.height) / 1_000_000, [room]);
-  const perimeter = useMemo(() => (2 * (room.width + room.height)) / 1000, [room]);
+  const area = geometry.area;
+  const perimeter = geometry.perimeter;
   const canvas = Math.ceil(area * 1.05 * 10) / 10;
 
   const update = (key: 'width' | 'height', value: string) => {
     const parsed = Number(value);
     if (Number.isFinite(parsed) && parsed >= 1000 && parsed <= 30000) {
-      setRoom((current) => ({ ...current, [key]: parsed }));
+      const next = { ...room, [key]: parsed };
+      setRoom(next);
+      setGeometry({ area: (next.width * next.height) / 1_000_000, perimeter: (2 * (next.width + next.height)) / 1000 });
       setSaved(false);
     }
   };
@@ -60,17 +63,18 @@ export default function PlannerWorkspace() {
           </div>
           <div className="panel-divider" />
           <div className="panel-title">Редактор формы</div>
-          <div className="hint">Для Г-образных помещений используйте инструменты прямо над планом: «Г-образная», «＋ Точка» и «− Точка».</div>
+          <div className="hint">Прямоугольник, Г-образная форма, добавление и удаление точек. Все размеры на плане считаются в миллиметрах.</div>
           <div className="panel-divider" />
           <div className="panel-title">Элементы</div>
-          <div className="hint">Добавление светильников, люстры и карниза выполняется на плане. Элементы можно перетаскивать и удалять.</div>
+          <div className="hint">Светильники, люстра и карниз добавляются на плане и перемещаются мышью или пальцем.</div>
         </aside>
 
         <section className="canvas-panel">
           <div className="canvas-head"><span>Интерактивный план помещения</span><span className="scale">Сетка · авто-масштаб · мм</span></div>
           <div className="drawing-area">
-            <InteractiveRoom width={room.width} length={room.height} onDimensionsChange={(width, length) => {
-              setRoom({ width: Math.round(width), height: Math.round(length) });
+            <InteractiveRoom width={room.width} length={room.height} onGeometryChange={(next) => {
+              setRoom({ width: next.width, height: next.length });
+              setGeometry({ area: next.area, perimeter: next.perimeter });
               setSaved(false);
             }} />
           </div>
@@ -85,7 +89,7 @@ export default function PlannerWorkspace() {
           <div className="estimate-line"><span>Монтаж</span><b>{area.toFixed(1)} м²</b></div>
           <div className="estimate-total"><span>Итого ориентировочно</span><strong>{Math.round(area * 900 + perimeter * 350 + area * 500).toLocaleString('ru-RU')} ₽</strong></div>
           <button className="primary full">Открыть подробную смету →</button>
-          <div className="estimate-note">Для сложной геометрии площадь плана считается по вершинам; подробная смета будет использовать эти значения после выбора материалов и коэффициентов.</div>
+          <div className="estimate-note">Площадь и периметр берутся непосредственно из текущей геометрии помещения.</div>
         </aside>
       </div>
     </main>
