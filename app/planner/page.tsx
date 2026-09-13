@@ -3,26 +3,73 @@
 import { useMemo, useState } from 'react';
 import './planner.css';
 
-type Mode = 'room' | 'lights' | 'price';
+type Mode = 'select' | 'room' | 'lights' | 'price';
+type Room = { width: number; height: number };
+type History = { room: Room; mode: Mode; grid: number };
 
-const initialRoom = { width: 5000, height: 3600 };
+const initialRoom: Room = { width: 5000, height: 3600 };
 
 export default function PlannerWorkspace() {
-  const [room, setRoom] = useState(initialRoom);
-  const [mode, setMode] = useState<Mode>('room');
+  const [room, setRoom] = useState<Room>(initialRoom);
+  const [mode, setMode] = useState<Mode>('select');
   const [projectName, setProjectName] = useState('Новая комната');
   const [saved, setSaved] = useState(false);
+  const [grid, setGrid] = useState(100);
+  const [history, setHistory] = useState<History[]>([]);
+  const [future, setFuture] = useState<History[]>([]);
+  const [showDiagonals, setShowDiagonals] = useState(true);
 
   const area = useMemo(() => (room.width * room.height) / 1_000_000, [room]);
   const perimeter = useMemo(() => (2 * (room.width + room.height)) / 1000, [room]);
   const canvas = Math.ceil(area * 1.05 * 10) / 10;
 
-  const update = (key: 'width' | 'height', value: string) => {
+  const snapshot = (): History => ({ room, mode, grid });
+  const apply = (next: History) => {
+    setRoom(next.room);
+    setMode(next.mode);
+    setGrid(next.grid);
+    setSaved(false);
+  };
+  const commit = (nextRoom: Room) => {
+    setHistory((items) => [...items.slice(-49), snapshot()]);
+    setFuture([]);
+    setRoom(nextRoom);
+    setSaved(false);
+  };
+  const undo = () => {
+    const previous = history.at(-1);
+    if (!previous) return;
+    setFuture((items) => [...items.slice(-49), snapshot()]);
+    setHistory((items) => items.slice(0, -1));
+    apply(previous);
+  };
+  const redo = () => {
+    const next = future.at(-1);
+    if (!next) return;
+    setHistory((items) => [...items.slice(-49), snapshot()]);
+    setFuture((items) => items.slice(0, -1));
+    apply(next);
+  };
+
+  const update = (key: keyof Room, value: string) => {
     const parsed = Number(value);
-    if (Number.isFinite(parsed) && parsed >= 1000 && parsed <= 30000) {
-      setRoom((current) => ({ ...current, [key]: parsed }));
-      setSaved(false);
+    if (Number.isFinite(parsed) && parsed >= 1000 && parsed <= 30000 && parsed !== room[key]) {
+      commit({ ...room, [key]: parsed });
     }
+  };
+
+  const setTool = (next: Mode) => {
+    setHistory((items) => [...items.slice(-49), snapshot()]);
+    setFuture([]);
+    setMode(next);
+    setSaved(false);
+  };
+
+  const changeGrid = (value: number) => {
+    setHistory((items) => [...items.slice(-49), snapshot()]);
+    setFuture([]);
+    setGrid(value);
+    setSaved(false);
   };
 
   return (
@@ -37,15 +84,21 @@ export default function PlannerWorkspace() {
           <input value={projectName} onChange={(e) => { setProjectName(e.target.value); setSaved(false); }} />
         </div>
         <div className="planner-actions">
+          <button onClick={undo} disabled={!history.length} title="Ctrl+Z">↶ Отмена</button>
+          <button onClick={redo} disabled={!future.length} title="Ctrl+Y">↷ Повтор</button>
           <button onClick={() => setSaved(true)}>{saved ? 'Сохранено ✓' : 'Сохранить'}</button>
           <button className="primary" onClick={() => window.print()}>Печать / PDF</button>
         </div>
       </header>
 
       <section className="planner-toolbar">
-        <button className={mode === 'room' ? 'active' : ''} onClick={() => setMode('room')}>▱ Геометрия</button>
-        <button className={mode === 'lights' ? 'active' : ''} onClick={() => setMode('lights')}>✦ Освещение</button>
-        <button className={mode === 'price' ? 'active' : ''} onClick={() => setMode('price')}>₽ Расчёт</button>
+        <button className={mode === 'select' ? 'active' : ''} onClick={() => setTool('select')}>↖ Выбор</button>
+        <button className={mode === 'room' ? 'active' : ''} onClick={() => setTool('room')}>▱ Геометрия</button>
+        <button className={mode === 'lights' ? 'active' : ''} onClick={() => setTool('lights')}>✦ Освещение</button>
+        <button className={mode === 'price' ? 'active' : ''} onClick={() => setTool('price')}>₽ Расчёт</button>
+        <span className="toolbar-divider" />
+        <button onClick={() => setShowDiagonals((v) => !v)}>{showDiagonals ? '⌁ Диагонали' : '⌁ Диагонали выкл.'}</button>
+        <span className="grid-control">Сетка <select value={grid} onChange={(e) => changeGrid(Number(e.target.value))}><option value={10}>10 мм</option><option value={50}>50 мм</option><option value={100}>100 мм</option></select></span>
       </section>
 
       <div className="planner-grid">
@@ -59,24 +112,25 @@ export default function PlannerWorkspace() {
           </div>
           <div className="panel-divider" />
           <div className="panel-title">Элементы</div>
-          <button className="element-btn">＋ Точечный светильник</button>
-          <button className="element-btn">＋ Люстра</button>
-          <button className="element-btn">＋ Карниз</button>
-          <div className="hint">Следующим этапом элементы станут интерактивными и будут участвовать в смете.</div>
+          <button className="element-btn" onClick={() => setTool('lights')}>＋ Точечный светильник</button>
+          <button className="element-btn" onClick={() => setTool('lights')}>＋ Люстра</button>
+          <button className="element-btn" onClick={() => setTool('lights')}>＋ Карниз</button>
+          <div className="hint">Выберите инструмент сверху. История изменений хранит последние 50 действий.</div>
         </aside>
 
         <section className="canvas-panel">
-          <div className="canvas-head"><span>План помещения</span><span className="scale">Масштаб: авто</span></div>
+          <div className="canvas-head"><span>План помещения</span><span className="scale">Инструмент: {mode === 'select' ? 'Выбор' : mode === 'room' ? 'Геометрия' : mode === 'lights' ? 'Освещение' : 'Расчёт'}</span></div>
           <div className="drawing-area">
-            <div className="room-drawing" style={{ aspectRatio: `${room.width} / ${room.height}` }}>
+            <div className="room-drawing" style={{ aspectRatio: `${room.width} / ${room.height}`, backgroundSize: `${Math.max(8, Math.min(32, grid / 4))}px ${Math.max(8, Math.min(32, grid / 4))}px` }}>
               <div className="room-fill">
                 <span>{room.width} мм</span>
                 <strong>{area.toFixed(2)} м²</strong>
                 <span>{room.height} мм</span>
+                {showDiagonals && <small>Диагональ: {Math.round(Math.hypot(room.width, room.height))} мм</small>}
               </div>
             </div>
           </div>
-          <div className="canvas-footer"><span>● Привязка к углам включена</span><span>Сетка 100 мм</span></div>
+          <div className="canvas-footer"><span>● Привязка к сетке {grid} мм</span><span>История: {history.length} · {future.length}</span></div>
         </section>
 
         <aside className="estimate-panel">
