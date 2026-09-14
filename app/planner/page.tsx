@@ -60,7 +60,8 @@ export default function PlannerWorkspace() {
   const redo = () => { const s = future.at(-1); if (!s) return; pushHistory(snapshot()); setFuture(f => f.slice(0, -1)); apply(s); };
 
   const pointFromEvent = (e: { clientX: number; clientY: number; currentTarget: Element }) => {
-    const svg = e.currentTarget instanceof SVGSVGElement ? e.currentTarget : e.currentTarget.ownerSVGElement;
+    const target = e.currentTarget as Element & { ownerSVGElement?: SVGSVGElement | null };
+    const svg = target instanceof SVGSVGElement ? target : target.ownerSVGElement;
     const r = svg?.getBoundingClientRect();
     if (!r) return { x: 0, y: 0 };
     return { x: Math.max(0, Math.min(W, (e.clientX - r.left) / zoom)), y: Math.max(0, Math.min(H, (e.clientY - r.top) / zoom)) };
