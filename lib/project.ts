@@ -21,7 +21,21 @@ export type ProjectPrices = {
   laborPricePerM2: number;
 };
 export type ProjectClient = { name: string; phone: string; address: string };
-export type ProjectVariant = { id: string; name: string; price: number };
+
+/**
+ * A variant is a real ceiling configuration, not only a price label.
+ * Older projects may contain variants without a snapshot; the active project
+ * geometry remains the fallback for those records.
+ */
+export type ProjectVariant = {
+  id: string;
+  name: string;
+  price: number;
+  points?: ProjectPoint[];
+  elements?: ProjectElement[];
+  quantityOverrides?: Record<string, number>;
+};
+
 export type CeilingProject = {
   id: string;
   name: string;
@@ -48,6 +62,37 @@ function isDeletedProject(value: unknown): value is DeletedProject {
   if (!value || typeof value !== 'object') return false;
   const p = value as Partial<DeletedProject>;
   return typeof p.id === 'string' && typeof p.deletedAt === 'string' && !Number.isNaN(Date.parse(p.deletedAt));
+}
+
+function isProjectPoint(value: unknown): value is ProjectPoint {
+  if (!value || typeof value !== 'object') return false;
+  const p = value as Partial<ProjectPoint>;
+  return Number.isFinite(p.x) && Number.isFinite(p.y);
+}
+
+function isProjectElement(value: unknown): value is ProjectElement {
+  if (!value || typeof value !== 'object') return false;
+  const e = value as Partial<ProjectElement>;
+  return Number.isFinite(e.id) && ['spot', 'chandelier', 'cornice'].includes(e.type ?? '') && Number.isFinite(e.x) && Number.isFinite(e.y)
+    && (e.width === undefined || Number.isFinite(e.width))
+    && (e.height === undefined || Number.isFinite(e.height))
+    && (e.price === undefined || Number.isFinite(e.price));
+}
+
+function isQuantityOverrides(value: unknown): value is Record<string, number> {
+  if (!value || typeof value !== 'object') return false;
+  return Object.values(value as Record<string, unknown>).every((item) => Number.isFinite(item));
+}
+
+function isProjectVariant(value: unknown): value is ProjectVariant {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Partial<ProjectVariant>;
+  return typeof v.id === 'string'
+    && typeof v.name === 'string'
+    && Number.isFinite(v.price)
+    && (v.points === undefined || (Array.isArray(v.points) && v.points.length >= 3 && v.points.every(isProjectPoint)))
+    && (v.elements === undefined || (Array.isArray(v.elements) && v.elements.every(isProjectElement)))
+    && (v.quantityOverrides === undefined || isQuantityOverrides(v.quantityOverrides));
 }
 
 function notifyProjectsChanged() {
@@ -142,7 +187,12 @@ export function duplicateProject(project: CeilingProject): CeilingProject {
     client: { ...project.client },
     clientId: project.clientId,
     notes: project.notes,
-    variants: project.variants?.map((variant) => ({ ...variant })),
+    variants: project.variants?.map((variant) => ({
+      ...variant,
+      points: variant.points?.map((point) => ({ ...point })),
+      elements: variant.elements?.map((element) => ({ ...element })),
+      quantityOverrides: variant.quantityOverrides ? { ...variant.quantityOverrides } : undefined,
+    })),
     quantityOverrides: project.quantityOverrides ? { ...project.quantityOverrides } : undefined,
     orthogonalMode: project.orthogonalMode ?? false,
   };
@@ -152,7 +202,7 @@ export function exportProjectsJson(projects = loadProjects()) {
   return JSON.stringify(
     {
       format: 'potolok-planner',
-      version: 5,
+      version: 6,
       exportedAt: new Date().toISOString(),
       projects,
     },
@@ -171,17 +221,10 @@ export function isCeilingProject(value: unknown): value is CeilingProject {
     !Number.isNaN(Date.parse(p.updatedAt)) &&
     Array.isArray(p.points) &&
     p.points.length >= 3 &&
-    p.points.every((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y)) &&
+    p.points.every(isProjectPoint) &&
     Array.isArray(p.elements) &&
-    p.elements.every((element) =>
-      Number.isFinite(element?.id) &&
-      ['spot', 'chandelier', 'cornice'].includes(element?.type ?? '') &&
-      Number.isFinite(element?.x) &&
-      Number.isFinite(element?.y) &&
-      (element?.width === undefined || Number.isFinite(element.width)) &&
-      (element?.height === undefined || Number.isFinite(element.height)) &&
-      (element?.price === undefined || Number.isFinite(element.price)),
-    ) &&
+    p.elements.every(isProjectElement) &&
+    (p.variants === undefined || (Array.isArray(p.variants) && p.variants.every(isProjectVariant))) &&
     (p.orthogonalMode === undefined || typeof p.orthogonalMode === 'boolean') &&
     (p.clientId === undefined || typeof p.clientId === 'string')
   );
