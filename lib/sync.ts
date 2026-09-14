@@ -34,7 +34,9 @@ export async function syncTable<T extends SyncableRecord>(
   const { data: rows, error } = await supabase.from(table).select(`${idColumn},payload`).eq('user_id', userId);
   if (error) return { error: error.message };
 
-  const remote = (rows ?? []).map((row: Record<string, unknown>) => row.payload as T).filter(isValid);
+  const remote = (rows ?? [])
+    .map((row) => (row as unknown as { payload: unknown }).payload)
+    .filter(isValid);
   const remoteById = new Map(remote.map((item) => [item.id, item]));
 
   const tombstones = loadTombstones();
