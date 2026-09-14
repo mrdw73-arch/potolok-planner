@@ -45,11 +45,13 @@
 .drawing-area { flex: 1; display: grid; place-items: center; padding: 28px; background-image: linear-gradient(#e7e9ed 1px, transparent 1px), linear-gradient(90deg, #e7e9ed 1px, transparent 1px); background-size: 32px 32px; overflow: auto; }
 .ceiling-canvas { width: min(100%, 900px); min-width: 620px; height: auto; transform-origin: center; filter: drop-shadow(0 18px 30px rgba(20,24,30,.12)); background: #fff; border: 1px solid #dfe2e7; }
 .ceiling-shape { fill: rgba(255,255,255,.96); stroke: #17191d; stroke-width: 5; stroke-linejoin: round; }
-.wall { stroke: #25282d; stroke-width: 9; stroke-linecap: round; cursor: pointer; }
+.wall { stroke: #25282d; stroke-width: 9; stroke-linecap: round; cursor: grab; }
 .wall:hover, .wall.selected { stroke: #4b5563; stroke-width: 12; }
+.wall:active { cursor: grabbing; }
 .vertex { fill: #fff; stroke: #17191d; stroke-width: 4; cursor: grab; }
 .vertex.selected { fill: #17191d; stroke: #fff; }
 .dimension-text { fill: #555b63; font-size: 14px; font-weight: 700; text-anchor: middle; paint-order: stroke; stroke: #fff; stroke-width: 5px; stroke-linejoin: round; }
+.angle-text { fill: #7a8088; font-size: 11px; font-weight: 750; paint-order: stroke; stroke: #fff; stroke-width: 4px; stroke-linejoin: round; }
 .diagonal-line { stroke: #a0a5ac; stroke-width: 2; stroke-dasharray: 7 6; pointer-events: none; }
 .diagonal-label { fill: #7c828a; font-size: 13px; font-weight: 650; text-anchor: middle; }
 .ceiling-light circle:first-child { fill: #fff; stroke: #17191d; stroke-width: 3; }
