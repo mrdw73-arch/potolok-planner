@@ -1,10 +1,12 @@
 export type ProjectPoint = { x: number; y: number };
-export type ProjectElementType = 'spot' | 'chandelier' | 'cornice';
+export type ProjectElementType = 'spot' | 'chandelier' | 'lightLine' | 'cornice';
 export type ProjectElement = {
   id: number;
   type: ProjectElementType;
   x: number;
   y: number;
+  x2?: number;
+  y2?: number;
   width?: number;
   height?: number;
   price?: number;
@@ -16,17 +18,13 @@ export type ProjectPrices = {
   fastenerPricePerM: number;
   spotlightPrice: number;
   chandelierPrice: number;
+  lightLinePricePerM: number;
   cornicePricePerM: number;
   wastePercent: number;
   laborPricePerM2: number;
 };
 export type ProjectClient = { name: string; phone: string; address: string };
 
-/**
- * A variant is a real ceiling configuration, not only a price label.
- * Older projects may contain variants without a snapshot; the active project
- * geometry remains the fallback for those records.
- */
 export type ProjectVariant = {
   id: string;
   name: string;
@@ -73,7 +71,12 @@ function isProjectPoint(value: unknown): value is ProjectPoint {
 function isProjectElement(value: unknown): value is ProjectElement {
   if (!value || typeof value !== 'object') return false;
   const e = value as Partial<ProjectElement>;
-  return Number.isFinite(e.id) && ['spot', 'chandelier', 'cornice'].includes(e.type ?? '') && Number.isFinite(e.x) && Number.isFinite(e.y)
+  return Number.isFinite(e.id)
+    && ['spot', 'chandelier', 'lightLine', 'cornice'].includes(e.type ?? '')
+    && Number.isFinite(e.x)
+    && Number.isFinite(e.y)
+    && (e.x2 === undefined || Number.isFinite(e.x2))
+    && (e.y2 === undefined || Number.isFinite(e.y2))
     && (e.width === undefined || Number.isFinite(e.width))
     && (e.height === undefined || Number.isFinite(e.height))
     && (e.price === undefined || Number.isFinite(e.price));
@@ -202,7 +205,7 @@ export function exportProjectsJson(projects = loadProjects()) {
   return JSON.stringify(
     {
       format: 'potolok-planner',
-      version: 6,
+      version: 7,
       exportedAt: new Date().toISOString(),
       projects,
     },
