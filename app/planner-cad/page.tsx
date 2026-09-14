@@ -5,7 +5,7 @@ import './cad.css';
 
 type Point = { x: number; y: number };
 type Tool = 'select' | 'draw' | 'spot' | 'chandelier' | 'line' | 'cornice';
-type Element = { id: number; type: Exclude<Tool, 'select' | 'draw'>; x: number; y: number; x2?: number; y2?: number; length?: number };
+type Element = { id: number; type: Tool; x: number; y: number; x2?: number; y2?: number; length?: number };
 
 const W = 1000;
 const H = 650;
