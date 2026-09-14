@@ -45,6 +45,20 @@ export function snapPoint(point: Point, step: number) {
   return { x: snap(point.x, step), y: snap(point.y, step) };
 }
 
+/** Converts common ceiling dimensions to millimetres: 3500, 3500 mm, 350 cm, 3.5 m. */
+export function parseDimension(value: string) {
+  const normalized = value.trim().toLowerCase().replace(',', '.');
+  const match = normalized.match(/^([0-9]+(?:\.[0-9]+)?)\s*(mm|см|cm|м|m)?$/i);
+  if (!match) return null;
+  const number = Number(match[1]);
+  if (!Number.isFinite(number) || number <= 0) return null;
+  const unit = match[2] ?? 'mm';
+  if (unit === 'm' || unit === 'м') return number * 1000;
+  if (unit === 'cm' || unit === 'см') return number * 10;
+  return number;
+}
+
+/** Resizes one side while translating the following vertex so the adjacent side stays attached. */
 export function resizeWallKeepingAdjacent(
   points: Point[],
   index: number,
