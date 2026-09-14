@@ -77,6 +77,7 @@ export default function PlannerWorkspace() {
   const addPointOnWall = (wall: number, e: MouseEvent<SVGLineElement>) => { if (mode !== 'room') return; const p = pointFromEvent(e); const a = points[wall], b = points[(wall + 1) % points.length]; const t = Math.max(0, Math.min(1, ((p.x-a.x)*(b.x-a.x)+(p.y-a.y)*(b.y-a.y)) / Math.max(dist(a,b)**2,1))); const n = { x: snap(a.x + (b.x-a.x)*t, grid/10), y: snap(a.y + (b.y-a.y)*t, grid/10) }; commit([...points.slice(0, wall + 1), n, ...points.slice(wall + 1)], elements); setSelectedPoint(wall + 1); setSelectedWall(wall); };
   const deletePoint = (i: number) => { if (points.length <= 3) return; commit(points.filter((_, j) => j !== i), elements); setSelectedPoint(null); setSelectedWall(null); };
 
+  const chooseElementTool = (tool: ElementTool) => { setElementTool(tool); setMode('element'); setSelectedElement(null); setSaved(false); };
   const addElement = (e: PointerEvent<SVGSVGElement>) => {
     if (mode !== 'element') return;
     const p = pointFromEvent(e);
@@ -88,8 +89,6 @@ export default function PlannerWorkspace() {
   };
   const updateElement = (id: number, patch: Partial<CeilingElement>) => commit(points, elements.map(e => e.id === id ? { ...e, ...patch } : e));
   const deleteElement = (id: number) => { commit(points, elements.filter(e => e.id !== id)); setSelectedElement(null); };
-  const setElementTool = (tool: ElementTool) => { setElementToolState(tool); };
-  const setElementToolState = (tool: ElementTool) => { setElementTool(tool); setMode('element'); setSelectedElement(null); setSaved(false); };
 
   const updateWallLength = (i: number, value: string) => { const targetMm = Number(value); if (!Number.isFinite(targetMm) || targetMm <= 100) return; const mmPoints = points.map(p => ({ x: p.x * 10, y: p.y * 10 })); const resized = orthogonal && mmPoints.length === 4 ? resizeOrthogonalWall(mmPoints, i, targetMm) : resizeWallKeepingAdjacent(mmPoints, i, targetMm); commit(resized.map(p => ({ x: p.x / 10, y: p.y / 10 })), elements); };
   const toggleOrthogonal = () => { const next = !orthogonal; setOrthogonal(next); setSaved(false); if (next && points.length >= 4) { pushHistory(snapshot()); setPoints(orthogonalizeRoom(points)); setFuture([]); } };
@@ -123,10 +122,10 @@ export default function PlannerWorkspace() {
           <div className="metric-grid"><div><span>Площадь</span><b>{area.toFixed(2)} м²</b></div><div><span>Периметр</span><b>{perimeter.toFixed(2)} м</b></div></div>
           <div className="panel-divider" />
           <div className="panel-title">Элементы потолка</div>
-          <button className="element-btn" onClick={() => setElementToolState('spot')}>＋ Точечный светильник</button>
-          <button className="element-btn" onClick={() => setElementToolState('chandelier')}>＋ Люстра</button>
-          <button className="element-btn" onClick={() => setElementToolState('lightLine')}>＋ Световая линия</button>
-          <button className="element-btn" onClick={() => setElementToolState('cornice')}>＋ Карниз</button>
+          <button className="element-btn" onClick={() => chooseElementTool('spot')}>＋ Точечный светильник</button>
+          <button className="element-btn" onClick={() => chooseElementTool('chandelier')}>＋ Люстра</button>
+          <button className="element-btn" onClick={() => chooseElementTool('lightLine')}>＋ Световая линия</button>
+          <button className="element-btn" onClick={() => chooseElementTool('cornice')}>＋ Карниз</button>
           <div className="hint">Выберите инструмент и кликните в нужном месте на чертеже.</div>
           <div className="panel-divider" />
           <div className="panel-title">Выбранный объект</div>
@@ -144,7 +143,7 @@ export default function PlannerWorkspace() {
               <polygon className="ceiling-shape" points={points.map(p => `${p.x},${p.y}`).join(' ')} />
               {points.map((p, i) => { const n = points[(i+1)%points.length]; const len = dist(p,n)/10; const mx=(p.x+n.x)/2, my=(p.y+n.y)/2; return <g key={`wall-${i}`}><line className={`wall ${selectedWall===i?'selected':''}`} x1={p.x} y1={p.y} x2={n.x} y2={n.y} onPointerDown={e=>startWallDrag(i,e)} onPointerMove={e=>moveWall(i,e)} onPointerUp={finishWallDrag} onPointerCancel={finishWallDrag} onDoubleClick={e=>addPointOnWall(i,e)} /><text className="dimension-text" x={mx} y={my-10}>{len.toFixed(0)} см</text>{showAngles && <text className="angle-text" x={p.x+12} y={p.y-12}>{angleAt(points[(i-1+points.length)%points.length],p,n).toFixed(0)}°</text>}</g>; })}
               {points.map((p,i)=><circle key={`point-${i}`} className={`vertex ${selectedPoint===i?'selected':''}`} cx={p.x} cy={p.y} r="8" onPointerDown={e=>startPointDrag(i,e)} onPointerMove={e=>dragPoint===i&&movePoint(i,e)} onPointerUp={finishPointDrag} onPointerCancel={finishPointDrag} onContextMenu={e=>{e.preventDefault(); deletePoint(i);}} onClick={e=>{e.stopPropagation();setSelectedPoint(i);setSelectedWall(null);setSelectedElement(null);}} />)}
-              {elements.map(el => <g key={el.id} className="ceiling-light" transform={`translate(${el.x} ${el.y})`} onClick={e=>{e.stopPropagation();setSelectedElement(el.id);setSelectedPoint(null);setSelectedWall(null);}}>{el.type==='spot' && <><circle r="15"/><circle r="5"/><text y="29">S</text></>}{el.type==='chandelier' && <><circle r="22"/><path d="M-12,-4 L0,10 L12,-4" fill="none" stroke="#fff" strokeWidth="3"/><text y="35">L</text></>}{(el.type==='lightLine'||el.type==='cornice') && <line x1="0" y1="0" x2={(el.x2??el.x+140)-el.x} y2={(el.y2??el.y)-el.y} stroke="#17191d" strokeWidth={el.type==='lightLine'?8:5} strokeLinecap="round"/>}</g>)}
+              {elements.map(el => <g key={el.id} className={`ceiling-light ${selectedElement===el.id?'selected':''}`} transform={`translate(${el.x} ${el.y})`} onClick={e=>{e.stopPropagation();setSelectedElement(el.id);setSelectedPoint(null);setSelectedWall(null);}}>{el.type==='spot' && <><circle r="15"/><circle r="5"/><text y="29">S</text></>}{el.type==='chandelier' && <><circle r="22"/><path d="M-12,-4 L0,10 L12,-4" fill="none" stroke="#fff" strokeWidth="3"/><text y="35">L</text></>}{(el.type==='lightLine'||el.type==='cornice') && <line x1="0" y1="0" x2={(el.x2??el.x+140)-el.x} y2={(el.y2??el.y)-el.y} stroke="#17191d" strokeWidth={el.type==='lightLine'?8:5} strokeLinecap="round"/>}</g>)}
             </svg>
           </div>
           <div className="canvas-footer"><span>Диагональ: {diagonal ? diagonal.toFixed(2) : '—'} м</span><span><button onClick={()=>setZoom(z=>Math.max(.7,z-.1))}>−</button> {Math.round(zoom*100)}% <button onClick={()=>setZoom(z=>Math.min(1.5,z+.1))}>＋</button></span></div>
