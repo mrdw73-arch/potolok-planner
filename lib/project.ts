@@ -30,6 +30,7 @@ export type CeilingProject = {
   elements: ProjectElement[];
   prices: ProjectPrices;
   client: ProjectClient;
+  clientId?: string;
   notes: string;
   variants?: ProjectVariant[];
   activeVariantId?: string;
@@ -38,6 +39,27 @@ export type CeilingProject = {
 };
 
 const STORAGE_KEY = 'potolok-planner-projects';
+const DELETED_STORAGE_KEY = 'potolok-planner-deleted';
+const CHANGE_EVENT = 'potolok:projects-changed';
+
+export type DeletedProject = { id: string; deletedAt: string };
+
+function isDeletedProject(value: unknown): value is DeletedProject {
+  if (!value || typeof value !== 'object') return false;
+  const p = value as Partial<DeletedProject>;
+  return typeof p.id === 'string' && typeof p.deletedAt === 'string' && !Number.isNaN(Date.parse(p.deletedAt));
+}
+
+function notifyProjectsChanged() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+}
+
+export function onProjectsChanged(handler: () => void) {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener(CHANGE_EVENT, handler);
+  return () => window.removeEventListener(CHANGE_EVENT, handler);
+}
 
 export function loadProjects(): CeilingProject[] {
   if (typeof window === 'undefined') return [];
@@ -45,7 +67,7 @@ export function loadProjects(): CeilingProject[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isProject);
+    return parsed.filter(isCeilingProject);
   } catch {
     return [];
   }
@@ -58,6 +80,41 @@ export function saveProjects(projects: CeilingProject[]) {
   } catch {
     // Storage can be unavailable or full; keep the current UI usable.
   }
+  notifyProjectsChanged();
+}
+
+export function loadDeletedProjects(): DeletedProject[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(DELETED_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isDeletedProject);
+  } catch {
+    return [];
+  }
+}
+
+function saveDeletedProjects(items: DeletedProject[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(DELETED_STORAGE_KEY, JSON.stringify(items));
+  } catch {
+    // Storage can be unavailable or full; keep the current UI usable.
+  }
+}
+
+export function clearDeletedProject(id: string) {
+  saveDeletedProjects(loadDeletedProjects().filter((item) => item.id !== id));
+}
+
+export function removeProjectLocally(id: string, projects = loadProjects()) {
+  const next = projects.filter((project) => project.id !== id);
+  saveProjects(next);
+  const deleted = loadDeletedProjects().filter((item) => item.id !== id);
+  deleted.push({ id, deletedAt: new Date().toISOString() });
+  saveDeletedProjects(deleted);
+  return next;
 }
 
 export function createProjectId() {
@@ -83,6 +140,7 @@ export function duplicateProject(project: CeilingProject): CeilingProject {
     elements: project.elements.map((element) => ({ ...element })),
     prices: { ...project.prices },
     client: { ...project.client },
+    clientId: project.clientId,
     notes: project.notes,
     variants: project.variants?.map((variant) => ({ ...variant })),
     quantityOverrides: project.quantityOverrides ? { ...project.quantityOverrides } : undefined,
@@ -103,7 +161,7 @@ export function exportProjectsJson(projects = loadProjects()) {
   );
 }
 
-function isProject(value: unknown): value is CeilingProject {
+export function isCeilingProject(value: unknown): value is CeilingProject {
   if (!value || typeof value !== 'object') return false;
   const p = value as Partial<CeilingProject>;
   return (
@@ -124,7 +182,8 @@ function isProject(value: unknown): value is CeilingProject {
       (element?.height === undefined || Number.isFinite(element.height)) &&
       (element?.price === undefined || Number.isFinite(element.price)),
     ) &&
-    (p.orthogonalMode === undefined || typeof p.orthogonalMode === 'boolean')
+    (p.orthogonalMode === undefined || typeof p.orthogonalMode === 'boolean') &&
+    (p.clientId === undefined || typeof p.clientId === 'string')
   );
 }
 
@@ -144,7 +203,7 @@ export function importProjectsJson(raw: string, existing = loadProjects()) {
     throw new Error('Неверный файл резервной копии Potolok Planner');
   }
 
-  const valid = parsed.projects.filter(isProject);
+  const valid = parsed.projects.filter(isCeilingProject);
   if (!valid.length && parsed.projects.length) {
     throw new Error('В резервной копии нет корректных проектов');
   }
