@@ -37,6 +37,7 @@ export default function PlannerCadPage() {
   const [sideLength, setSideLength] = useState('3000');
   const [sideAngle, setSideAngle] = useState('0');
   const [drag, setDrag] = useState<{ id: number; offset: Point } | null>(null);
+  const [dragPoint, setDragPoint] = useState<{ index: number; start: Point[] } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
   const snapToGrid = (p: Point) => ({ x: Math.round(p.x / grid) * grid, y: Math.round(p.y / grid) * grid });
@@ -76,6 +77,7 @@ export default function PlannerCadPage() {
       ? resizeOrthogonalWall(points, i, mm / 10)
       : resizeWallKeepingAdjacent(points, i, mm / 10);
     commitPoints(next);
+    setWallInput(String(mm));
   };
 
   const beginWallEdit = (i: number) => {
@@ -89,6 +91,13 @@ export default function PlannerCadPage() {
     if (editingWall === null) return;
     editWallLength(editingWall, wallInput);
     setEditingWall(null);
+  };
+
+  const selectWall = (i: number) => {
+    setSelectedWall(i);
+    setSelectedPoint(null);
+    setSelectedElement(null);
+    setWallInput(String(Math.round(distance(points[i], points[(i + 1) % points.length]) * 10)));
   };
 
   const addSideByLength = () => {
@@ -123,15 +132,68 @@ export default function PlannerCadPage() {
     else { setSelectedWall(null); setSelectedPoint(null); setSelectedElement(null); }
   };
 
+  const startPointDrag = (index: number, e: PointerEvent<SVGCircleElement>) => {
+    if (tool !== 'select') return;
+    e.stopPropagation();
+    setSelectedPoint(index);
+    setSelectedWall(null);
+    setSelectedElement(null);
+    setDragPoint({ index, start: points.map(p => ({ ...p })) });
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const movePoint = (index: number, e: PointerEvent<SVGCircleElement>) => {
+    if (!dragPoint || dragPoint.index !== index) return;
+    const cursor = cursorPoint(e);
+    let next = dragPoint.start.map((p, i) => i === index ? cursor : { ...p });
+    if (orthogonal && next.length === 4) {
+      const prev = next[(index - 1 + next.length) % next.length];
+      const following = next[(index + 1) % next.length];
+      if (Math.abs(cursor.x - dragPoint.start[index].x) >= Math.abs(cursor.y - dragPoint.start[index].y)) {
+        next[(index - 1 + next.length) % next.length] = { ...prev, y: cursor.y };
+        next[(index + 1) % next.length] = { ...following, y: cursor.y };
+      } else {
+        next[(index - 1 + next.length) % next.length] = { ...prev, x: cursor.x };
+        next[(index + 1) % next.length] = { ...following, x: cursor.x };
+      }
+    }
+    setPoints(next);
+  };
+
+  const finishPointDrag = (e: PointerEvent<SVGCircleElement>) => {
+    if (!dragPoint) return;
+    setHistory(h => [...h.slice(-39), dragPoint.start]);
+    setDragPoint(null);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+  };
+
   const moveElement = (id: number, e: PointerEvent<SVGElement>) => {
     const p = cursorPoint(e);
-    setElements(prev => prev.map(x => x.id === id
-      ? { ...x, x: p.x - (drag?.offset.x ?? 0), y: p.y - (drag?.offset.y ?? 0), x2: x.x2 == null ? x.x2 : x.x2 + p.x - (drag?.offset.x ?? 0) - x.x, y2: x.y2 == null ? x.y2 : x.y2 + p.y - (drag?.offset.y ?? 0) - x.y }
-      : x));
+    setElements(prev => prev.map(x => {
+      if (x.id !== id) return x;
+      const nx = p.x - (drag?.offset.x ?? 0);
+      const ny = p.y - (drag?.offset.y ?? 0);
+      const dx = nx - x.x;
+      const dy = ny - x.y;
+      return { ...x, x: nx, y: ny, x2: x.x2 == null ? x.x2 : x.x2 + dx, y2: x.y2 == null ? x.y2 : x.y2 + dy };
+    }));
+  };
+
+  const updateElementCoordinate = (id: number, axis: 'x' | 'y', value: string) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return;
+    const next = numeric / 10;
+    setElements(prev => prev.map(x => {
+      if (x.id !== id) return x;
+      const delta = next - x[axis];
+      return axis === 'x'
+        ? { ...x, x: next, x2: x.x2 == null ? x.x2 : x.x2 + delta }
+        : { ...x, y: next, y2: x.y2 == null ? x.y2 : x.y2 + delta };
+    }));
   };
 
   const undo = () => { const h = history.at(-1); if (!h) return; setHistory(history.slice(0, -1)); setPoints(h); };
-  const startNew = () => { setHistory([]); setPoints([]); setElements([]); setTool('draw'); setSelectedWall(null); setSelectedPoint(null); setSelectedElement(null); };
+  const startNew = () => { setHistory([]); setPoints([]); setElements([]); setTool('draw'); setSelectedWall(null); setSelectedPoint(null); setSelectedElement(null); setDragPoint(null); };
   const A = useMemo(() => area(points) / 10000, [points]);
   const P = useMemo(() => perimeter(points) / 100, [points]);
   const selected = selectedElement ? elements.find(e => e.id === selectedElement) : undefined;
@@ -158,20 +220,20 @@ export default function PlannerCadPage() {
       </aside>
       <section className="cad-center">
         <div className="cad-ruler-top">{Array.from({ length: 11 }, (_, i) => <span key={i}>{i * 1000}</span>)}</div>
-        <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="cad-svg" onPointerDown={onCanvasPointerDown} onPointerMove={e => setHover(cursorPoint(e))} onPointerLeave={() => setHover(null)} tabIndex={0} onKeyDown={e => { if (e.key === 'Escape') { setTool('select'); setHover(null); setEditingWall(null); } if (e.key === 'Backspace' && tool === 'draw') { e.preventDefault(); setPoints(p => p.slice(0, -1)); } }}>
+        <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="cad-svg" onPointerDown={onCanvasPointerDown} onPointerMove={e => setHover(cursorPoint(e))} onPointerLeave={() => setHover(null)} tabIndex={0} onKeyDown={e => { if (e.key === 'Escape') { setTool('select'); setHover(null); setEditingWall(null); setDragPoint(null); setDrag(null); } if (e.key === 'Backspace' && tool === 'draw') { e.preventDefault(); setPoints(p => p.slice(0, -1)); } }}>
           <defs><pattern id="grid" width={grid} height={grid} patternUnits="userSpaceOnUse"><path d={`M ${grid} 0 L 0 0 0 ${grid}`} fill="none" stroke="currentColor" opacity=".08" /></pattern></defs>
           <rect width={W} height={H} fill="url(#grid)" />
           {points.length > 2 && <polygon points={points.map(p => `${p.x},${p.y}`).join(' ')} className="ceiling-fill" />}
           {points.map((a, i) => {
             const b = points[(i + 1) % points.length]; const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; const len = distance(a, b);
             return <g key={`w${i}`}>
-              <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} className={selectedWall === i ? 'wall selected' : 'wall'} onPointerDown={e => { e.stopPropagation(); if (tool === 'select') { setSelectedWall(i); setSelectedPoint(null); setSelectedElement(null); } }} />
+              <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} className={selectedWall === i ? 'wall selected' : 'wall'} onPointerDown={e => { e.stopPropagation(); if (tool === 'select') selectWall(i); }} />
               {editingWall === i ? <foreignObject x={mid.x - 70} y={mid.y - 20} width="140" height="42"><input autoFocus value={wallInput} onChange={e => setWallInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') finishWallEdit(); if (e.key === 'Escape') setEditingWall(null); }} onBlur={finishWallEdit} className="dimension-input" /></foreignObject> : <g className="dimension" onDoubleClick={e => { e.stopPropagation(); beginWallEdit(i); }}><rect x={mid.x - 48} y={mid.y - 13} width="96" height="26" rx="5" /><text x={mid.x} y={mid.y + 5}>{Math.round(len * 10)} мм</text></g>}
               {points.length > 2 && <text x={mid.x + 10} y={mid.y - 16} className="wall-index">С{i + 1}</text>}
             </g>;
           })}
           {showDiagonals && points.length > 3 && <><line x1={points[0].x} y1={points[0].y} x2={points[Math.floor(points.length / 2)].x} y2={points[Math.floor(points.length / 2)].y} className="diagonal" /><text x={(points[0].x + points[Math.floor(points.length / 2)].x) / 2} y={(points[0].y + points[Math.floor(points.length / 2)].y) / 2 - 8} className="diagonal-label">{Math.round(distance(points[0], points[Math.floor(points.length / 2)]) * 10)} мм</text></>}
-          {points.map((p, i) => <circle key={`p${i}`} cx={p.x} cy={p.y} r={selectedPoint === i ? 8 : 6} className={selectedPoint === i ? 'vertex selected' : 'vertex'} onPointerDown={e => { e.stopPropagation(); setSelectedPoint(i); setSelectedWall(null); setSelectedElement(null); }} />)}
+          {points.map((p, i) => <circle key={`p${i}`} cx={p.x} cy={p.y} r={selectedPoint === i ? 8 : 6} className={selectedPoint === i ? 'vertex selected' : 'vertex'} onPointerDown={e => startPointDrag(i, e)} onPointerMove={e => movePoint(i, e)} onPointerUp={finishPointDrag} />)}
           {points.length > 2 && points.map((p, i) => { const prev = points[(i - 1 + points.length) % points.length]; const next = points[(i + 1) % points.length]; return <text key={`a${i}`} x={p.x + 14} y={p.y - 14} className="angle">{Math.round(angleAt(prev, p, next))}°</text>; })}
           {tool === 'draw' && points.length > 0 && hover && <><line x1={points.at(-1)!.x} y1={points.at(-1)!.y} x2={hover.x} y2={hover.y} className="preview" /><circle cx={points[0].x} cy={points[0].y} r="15" className="close-target" /></>}
           {elements.map(el => <g key={el.id} className={selectedElement === el.id ? 'element selected' : 'element'} onPointerDown={e => { e.stopPropagation(); const p = cursorPoint(e); setSelectedElement(el.id); setTool('select'); setDrag({ id: el.id, offset: { x: p.x - el.x, y: p.y - el.y } }); (e.currentTarget as SVGElement).setPointerCapture?.(e.pointerId); }} onPointerMove={e => { if (drag?.id === el.id) moveElement(el.id, e); }} onPointerUp={() => setDrag(null)}>
@@ -183,9 +245,9 @@ export default function PlannerCadPage() {
         <div className="cad-status">{tool === 'draw' ? `Построение контура · ${points.length} точек · клик по первой точке — замкнуть` : 'Готово'}<span>Масштаб 100%</span></div>
       </section>
       <aside className="cad-right"><h3>Параметры</h3>
-        {selectedWall !== null && points.length > 1 && <div className="property-card"><b>Сторона {selectedWall + 1}</b><label>Длина<input value={Math.round(distance(points[selectedWall], points[(selectedWall + 1) % points.length]) * 10)} onChange={e => setWallInput(e.target.value)} onBlur={() => editWallLength(selectedWall, wallInput)} /><span>мм</span></label><p>Можно вводить мм, см или м.</p></div>}
+        {selectedWall !== null && points.length > 1 && <div className="property-card"><b>Сторона {selectedWall + 1}</b><label>Длина<input value={wallInput} onChange={e => setWallInput(e.target.value)} onBlur={() => editWallLength(selectedWall, wallInput)} onKeyDown={e => { if (e.key === 'Enter') editWallLength(selectedWall, wallInput); }} /><span>мм</span></label><p>Можно вводить мм, см или м.</p></div>}
         {selectedPoint !== null && points[selectedPoint] && <div className="property-card"><b>Точка {selectedPoint + 1}</b><label>X<input value={Math.round(points[selectedPoint].x * 10)} onChange={e => setPoints(p => p.map((x, i) => i === selectedPoint ? { ...x, x: Number(e.target.value) / 10 } : x))} /> мм</label><label>Y<input value={Math.round(points[selectedPoint].y * 10)} onChange={e => setPoints(p => p.map((x, i) => i === selectedPoint ? { ...x, y: Number(e.target.value) / 10 } : x))} /> мм</label></div>}
-        {selected && <div className="property-card"><b>{selected.type === 'spot' ? 'Точечный светильник' : selected.type === 'chandelier' ? 'Люстра' : selected.type === 'line' ? 'Световая линия' : 'Карниз'}</b><label>X<input value={Math.round(selected.x * 10)} onChange={e => setElements(prev => prev.map(x => x.id === selected.id ? { ...x, x: Number(e.target.value) / 10 } : x))} /> мм</label><label>Y<input value={Math.round(selected.y * 10)} onChange={e => setElements(prev => prev.map(x => x.id === selected.id ? { ...x, y: Number(e.target.value) / 10 } : x))} /> мм</label><button className="danger" onClick={() => { setElements(prev => prev.filter(x => x.id !== selected.id)); setSelectedElement(null); }}>Удалить</button></div>}
+        {selected && <div className="property-card"><b>{selected.type === 'spot' ? 'Точечный светильник' : selected.type === 'chandelier' ? 'Люстра' : selected.type === 'line' ? 'Световая линия' : 'Карниз'}</b><label>X<input value={Math.round(selected.x * 10)} onChange={e => updateElementCoordinate(selected.id, 'x', e.target.value)} /> мм</label><label>Y<input value={Math.round(selected.y * 10)} onChange={e => updateElementCoordinate(selected.id, 'y', e.target.value)} /> мм</label><button className="danger" onClick={() => { setElements(prev => prev.filter(x => x.id !== selected.id)); setSelectedElement(null); }}>Удалить</button></div>}
         <div className="summary"><div><span>Площадь</span><b>{A.toFixed(2)} м²</b></div><div><span>Периметр</span><b>{P.toFixed(2)} м</b></div><div><span>Углов</span><b>{points.length}</b></div></div>
       </aside>
     </div>
