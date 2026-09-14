@@ -23,4 +23,6 @@ Potolok Planner is a Russian-language web app for designing and estimating stret
 - `app/components/` — planner UI panels/components
 - `lib/geometry.ts` — room geometry calculations
 - `lib/project.ts` — project persistence/import/export
+- `lib/client.ts` — client (CRM) persistence, mirrors `project.ts`'s pattern
+- `lib/sync.ts` — generic tombstone-aware Supabase table sync, used by `CloudSync.tsx` for both `projects` and `clients`
 - `lib/catalog.ts` — materials/pricing catalog

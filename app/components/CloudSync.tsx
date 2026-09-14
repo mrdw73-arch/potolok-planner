@@ -1,17 +1,26 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { CeilingProject, loadProjects, saveProjects } from '../../lib/project';
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  clearDeletedClient,
+  isClient,
+  loadClients,
+  loadDeletedClients,
+  onClientsChanged,
+  saveClients,
+} from '../../lib/client';
+import {
+  clearDeletedProject,
+  isCeilingProject,
+  loadDeletedProjects,
+  loadProjects,
+  onProjectsChanged,
+  saveProjects,
+} from '../../lib/project';
 import { cloudConfigured, supabase } from '../../lib/supabase';
+import { syncTable } from '../../lib/sync';
 
-function mergeProjects(local: CeilingProject[], remote: CeilingProject[]) {
-  const byId = new Map<string, CeilingProject>(local.map((project) => [project.id, project]));
-  for (const project of remote) {
-    const current = byId.get(project.id);
-    if (!current || new Date(project.updatedAt).getTime() > new Date(current.updatedAt).getTime()) byId.set(project.id, project);
-  }
-  return Array.from(byId.values()).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-}
+const SYNC_DEBOUNCE_MS = 1500;
 
 function friendlyAuthError(message: string) {
   const value = message.toLowerCase();
@@ -21,7 +30,8 @@ function friendlyAuthError(message: string) {
   if (value.includes('password')) return `Ошибка пароля: ${message}`;
   if (value.includes('failed to fetch') || value.includes('network')) return 'Нет связи с Supabase. Проверьте интернет и переменные Vercel.';
   if (value.includes('relation') && value.includes('projects')) return 'Таблица projects не создана. Выполните supabase/schema.sql в SQL Editor.';
-  if (value.includes('row-level security') || value.includes('rls')) return 'Supabase отклонил запрос RLS. Проверьте авторизацию и политики таблицы projects.';
+  if (value.includes('relation') && value.includes('clients')) return 'Таблица clients не создана. Выполните supabase/schema.sql в SQL Editor.';
+  if (value.includes('row-level security') || value.includes('rls')) return 'Supabase отклонил запрос. Проверьте авторизацию и политики таблиц.';
   return message;
 }
 
@@ -32,47 +42,64 @@ export default function CloudSync() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [open, setOpen] = useState(false);
+  const syncingRef = useRef(false);
 
   const sync = useCallback(async () => {
-    if (!supabase) return;
+    if (!supabase || syncingRef.current) return;
+    syncingRef.current = true;
     setBusy(true);
     setMessage('Синхронизация…');
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setBusy(false);
-      setMessage('Сначала войдите в аккаунт.');
-      return;
-    }
-
-    const { data: rows, error } = await supabase.from('projects').select('project_id,payload').eq('user_id', user.id);
-    if (error) {
-      setBusy(false);
-      setMessage(friendlyAuthError(error.message));
-      return;
-    }
-
-    const remote = (rows ?? []).map((row) => row.payload as CeilingProject).filter((project) => project?.id && project?.name && Array.isArray(project.points));
-    const merged = mergeProjects(loadProjects(), remote);
-    const uploads = merged.map((project) => ({ user_id: user.id, project_id: project.id, name: project.name, updated_at: project.updatedAt, payload: project }));
-
-    if (uploads.length) {
-      const { error: uploadError } = await supabase.from('projects').upsert(uploads, { onConflict: 'user_id,project_id' });
-      if (uploadError) {
-        setBusy(false);
-        setMessage(friendlyAuthError(uploadError.message));
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setMessage('Сначала войдите в аккаунт.');
         return;
       }
-    }
 
-    saveProjects(merged);
-    setBusy(false);
-    setMessage(`Синхронизировано: ${merged.length} проект(ов)`);
+      const projectsResult = await syncTable(supabase, user.id, {
+        table: 'projects',
+        idColumn: 'project_id',
+        loadLocal: loadProjects,
+        saveLocal: saveProjects,
+        loadTombstones: loadDeletedProjects,
+        clearTombstone: clearDeletedProject,
+        isValid: isCeilingProject,
+      });
+      if ('error' in projectsResult) {
+        setMessage(friendlyAuthError(projectsResult.error));
+        return;
+      }
+
+      const clientsResult = await syncTable(supabase, user.id, {
+        table: 'clients',
+        idColumn: 'client_id',
+        loadLocal: loadClients,
+        saveLocal: saveClients,
+        loadTombstones: loadDeletedClients,
+        clearTombstone: clearDeletedClient,
+        isValid: isClient,
+      });
+      if ('error' in clientsResult) {
+        setMessage(friendlyAuthError(clientsResult.error));
+        return;
+      }
+
+      setMessage(`Синхронизировано: ${projectsResult.count} проект(ов), ${clientsResult.count} клиент(ов)`);
+    } finally {
+      syncingRef.current = false;
+      setBusy(false);
+    }
   }, []);
 
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getUser().then(({ data }) => setUserEmail(data.user?.email ?? null));
+    let cancelled = false;
+    supabase.auth.getUser().then(({ data }) => {
+      if (cancelled) return;
+      setUserEmail(data.user?.email ?? null);
+      if (data.user) void sync();
+    });
     const { data: authState } = supabase.auth.onAuthStateChange((event, session) => {
       const nextEmail = session?.user?.email ?? null;
       setUserEmail(nextEmail);
@@ -81,8 +108,28 @@ export default function CloudSync() {
         window.setTimeout(() => void sync(), 0);
       }
     });
-    return () => authState.subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      authState.subscription.unsubscribe();
+    };
   }, [sync]);
+
+  useEffect(() => {
+    if (!cloudConfigured) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleSync = () => {
+      if (!userEmail || syncingRef.current) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void sync(), SYNC_DEBOUNCE_MS);
+    };
+    const unsubscribeProjects = onProjectsChanged(scheduleSync);
+    const unsubscribeClients = onClientsChanged(scheduleSync);
+    return () => {
+      if (timer) clearTimeout(timer);
+      unsubscribeProjects();
+      unsubscribeClients();
+    };
+  }, [userEmail, sync]);
 
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -142,7 +189,7 @@ export default function CloudSync() {
         <div className="button-row"><button className="primary" disabled={busy} type="submit">Войти</button><button className="ghost" disabled={busy} type="button" onClick={() => void signup()}>Регистрация</button></div>
         <button className="ghost" disabled={busy} type="button" onClick={() => void resetPassword()} style={{ width: '100%', marginTop: 8 }}>Забыли пароль?</button>
       </form> : <>
-        <button className="primary" disabled={busy} onClick={() => void sync()}>{busy ? 'Синхронизация…' : 'Синхронизировать проекты'}</button>
+        <button className="primary" disabled={busy} onClick={() => void sync()}>{busy ? 'Синхронизация…' : 'Синхронизировать данные'}</button>
         <button className="ghost" disabled={busy} onClick={() => void logout()}>Выйти</button>
       </>}
       {message && <small className="cloud-message">{message}</small>}
