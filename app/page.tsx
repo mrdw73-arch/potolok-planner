@@ -11,12 +11,12 @@ import { angleAt, distance, orthogonalizeRoom, polygonArea, polygonPerimeter, re
 import { CeilingProject, createProjectId, duplicateProject, exportProjectsJson, importProjectsJson, loadProjects, onProjectsChanged, removeProjectLocally, upsertProject } from '../lib/project';
 
 type Point = { x: number; y: number };
-type ElementType = 'spot' | 'chandelier' | 'cornice';
+type ElementType = 'spot' | 'chandelier' | 'cornice' | 'lightLine';
 type CeilingElement = { id: number; type: ElementType; x: number; y: number; width?: number; height?: number; price?: number };
 const W = 800;
 const H = 600;
 const initialPoints: Point[] = [{ x: 0, y: 0 }, { x: 5000, y: 0 }, { x: 5000, y: 3600 }, { x: 0, y: 3600 }];
-const labels: Record<ElementType, string> = { spot: 'Светильник', chandelier: 'Люстра', cornice: 'Карниз' };
+const labels: Record<ElementType, string> = { spot: 'Светильник', chandelier: 'Люстра', cornice: 'Карниз', lightLine: 'Световая линия' };
 const defaultPrices = { canvasPricePerM2: 900, profilePricePerM: 350, insertPricePerM: 120, fastenerPricePerM: 45, spotlightPrice: 700, chandelierPrice: 1200, cornicePricePerM: 650, wastePercent: 0, laborPricePerM2: 500 };
 
 function clonePoints(points: Point[]) { return points.map(p => ({ ...p })); }
@@ -187,7 +187,7 @@ export default function Home() {
   function commitWallEdit() { if (editingWall === null) return; const value = Number(editingWallValue); if (Number.isFinite(value) && value > 0) setWallLength(editingWall, value); setEditingWall(null); }
   function cancelWallEdit() { setEditingWall(null); }
   function addCorner() { const n = (selectedWall + 1) % points.length, a = points[selectedWall], b = points[n], m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; setPoints(c => [...c.slice(0, n), m, ...c.slice(n)]); setSelectedPoint(n); setSelectedWall(n); }
-  function addElement(type: ElementType) { const x = points.reduce((s, p) => s + p.x, 0) / points.length, y = points.reduce((s, p) => s + p.y, 0) / points.length; const defaults: Record<ElementType, Partial<CeilingElement>> = { spot: { width: 120, price: 700 }, chandelier: { width: 600, price: 1200 }, cornice: { width: 1000, height: 80, price: 650 } }; const element = { id: nextId, type, x, y, ...defaults[type] }; setElements(c => [...c, element]); setSelectedElement(nextId); setNextId(n => n + 1); }
+  function addElement(type: ElementType) { const x = points.reduce((s, p) => s + p.x, 0) / points.length, y = points.reduce((s, p) => s + p.y, 0) / points.length; const defaults: Record<ElementType, Partial<CeilingElement>> = { spot: { width: 120, price: 700 }, chandelier: { width: 600, price: 1200 }, cornice: { width: 1000, height: 80, price: 650 }, lightLine: { width: 1400, price: 950 } }; const element = { id: nextId, type, x, y, ...defaults[type] }; setElements(c => [...c, element]); setSelectedElement(nextId); setNextId(n => n + 1); }
   function updateElement(id: number, patch: Partial<CeilingElement>) { setElements(current => current.map(element => element.id === id ? { ...element, ...patch } : element)); }
   function deleteElement(id: number) { setElements(current => current.filter(element => element.id !== id)); if (selectedElement === id) setSelectedElement(null); }
   function moveElement(id: number, e: PointerEvent<SVGGElement>) { const svg = e.currentTarget.ownerSVGElement; if (!svg) return; const r = svg.getBoundingClientRect(); const sx = (e.clientX - r.left) / r.width * W, sy = (e.clientY - r.top) / r.height * H; setElements(c => c.map(v => v.id === id ? { ...v, x: (sx - bounds.ox) / bounds.scale + bounds.minX, y: (sy - bounds.oy) / bounds.scale + bounds.minY } : v)); }
