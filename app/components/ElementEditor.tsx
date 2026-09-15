@@ -1,6 +1,6 @@
 'use client';
 
-type ElementType = 'spot' | 'chandelier' | 'cornice';
+type ElementType = 'spot' | 'chandelier' | 'cornice' | 'lightLine';
 
 type Element = {
   id: number;
@@ -22,6 +22,7 @@ const labels: Record<ElementType, string> = {
   spot: 'Светильник',
   chandelier: 'Люстра',
   cornice: 'Карниз',
+  lightLine: 'Световая линия',
 };
 
 export default function ElementEditor({ element, onChange, onDelete }: Props) {
