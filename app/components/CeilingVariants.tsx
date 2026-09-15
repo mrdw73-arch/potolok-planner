@@ -6,7 +6,17 @@ export type CeilingVariant = {
   price: number;
   active?: boolean;
   points?: { x: number; y: number }[];
-  elements?: { id: number; type: 'spot' | 'chandelier' | 'cornice'; x: number; y: number; width?: number; height?: number; price?: number }[];
+  elements?: {
+    id: number;
+    type: 'spot' | 'chandelier' | 'lightLine' | 'cornice';
+    x: number;
+    y: number;
+    x2?: number;
+    y2?: number;
+    width?: number;
+    height?: number;
+    price?: number;
+  }[];
   quantityOverrides?: Record<string, number>;
 };
 
