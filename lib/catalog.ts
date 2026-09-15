@@ -15,6 +15,7 @@ export const defaultCatalog: CatalogItem[] = [
   { id: 'fastener', name: 'Крепёж', category: 'material', unit: 'м.п.', costPrice: 20, sellPrice: 45 },
   { id: 'spot', name: 'Точечный светильник', category: 'material', unit: 'шт.', costPrice: 380, sellPrice: 700 },
   { id: 'chandelier', name: 'Закладная под люстру', category: 'material', unit: 'шт.', costPrice: 650, sellPrice: 1200 },
+  { id: 'lightLine', name: 'Световая линия', category: 'material', unit: 'м.п.', costPrice: 480, sellPrice: 950 },
   { id: 'cornice', name: 'Карниз', category: 'material', unit: 'м.п.', costPrice: 320, sellPrice: 650 },
   { id: 'installation', name: 'Монтаж потолка', category: 'work', unit: 'м²', costPrice: 220, sellPrice: 500 },
 ];
