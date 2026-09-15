@@ -3,149 +3,43 @@
 import { useMemo, useState } from 'react';
 import { angleAt, parseDimension, pointFromLengthAngle, polygonArea, polygonPerimeter, resizeOrthogonalWall, resizeWallKeepingAdjacent } from '../../lib/geometry';
 import './planner.css';
+import './planner-next.css';
 
 type Point = { x: number; y: number };
 type ElementType = 'spot' | 'chandelier' | 'lightLine' | 'cornice';
 type Item = { id: number; type: ElementType; x: number; y: number; x2?: number; y2?: number };
 type HistoryState = { points: Point[]; items: Item[] };
+const W=900,H=620;
+const initial:Point[]=[{x:120,y:100},{x:780,y:100},{x:780,y:520},{x:120,y:520}];
+const prices:Record<ElementType,number>={spot:700,chandelier:1200,lightLine:950,cornice:650};
+const labels:Record<ElementType,string>={spot:'Точечный светильник',chandelier:'Люстра',lightLine:'Световая линия',cornice:'Карниз'};
+const units:Record<ElementType,string>={spot:'шт.',chandelier:'шт.',lightLine:'м.п.',cornice:'м.п.'};
+const snap=(v:number,step:number)=>Math.round(v/step)*step;
+const distance=(a:Point,b:Point)=>Math.hypot(b.x-a.x,b.y-a.y);
 
-const W = 900;
-const H = 620;
-const initial: Point[] = [{ x: 120, y: 100 }, { x: 780, y: 100 }, { x: 780, y: 520 }, { x: 120, y: 520 }];
-const prices: Record<ElementType, number> = { spot: 700, chandelier: 1200, lightLine: 950, cornice: 650 };
-const labels: Record<ElementType, string> = { spot: 'Точечный светильник', chandelier: 'Люстра', lightLine: 'Световая линия', cornice: 'Карниз' };
-const units: Record<ElementType, string> = { spot: 'шт.', chandelier: 'шт.', lightLine: 'м.п.', cornice: 'м.п.' };
-const snap = (v: number, step: number) => Math.round(v / step) * step;
-const distance = (a: Point, b: Point) => Math.hypot(b.x - a.x, b.y - a.y);
-
-export default function PlannerWorkspace() {
-  const [points, setPoints] = useState<Point[]>(initial);
-  const [items, setItems] = useState<Item[]>([]);
-  const [tool, setTool] = useState<'select' | 'draw' | ElementType>('select');
-  const [orthogonal, setOrthogonal] = useState(true);
-  const [grid, setGrid] = useState(50);
-  const [sideLength, setSideLength] = useState('');
-  const [sideAngle, setSideAngle] = useState('0');
-  const [selectedWall, setSelectedWall] = useState<number | null>(null);
-  const [selectedPoint, setSelectedPoint] = useState<number | null>(null);
-  const [selectedItem, setSelectedItem] = useState<number | null>(null);
-  const [showDiagonals, setShowDiagonals] = useState(true);
-  const [showAngles, setShowAngles] = useState(true);
-  const [zoom, setZoom] = useState(1);
-  const [projectName, setProjectName] = useState('Новая комната');
-  const [history, setHistory] = useState<HistoryState[]>([]);
-  const [future, setFuture] = useState<HistoryState[]>([]);
-
-  const area = useMemo(() => polygonArea(points) / 10000, [points]);
-  const perimeter = useMemo(() => polygonPerimeter(points) / 100, [points]);
-  const diagonal = useMemo(() => points.length >= 3 ? distance(points[0], points[2]) / 100 : 0, [points]);
-  const estimate = useMemo(() => {
-    const spots = items.filter(x => x.type === 'spot').length;
-    const chandeliers = items.filter(x => x.type === 'chandelier').length;
-    const line = items.filter(x => x.type === 'lightLine').reduce((s, x) => s + distance({ x: x.x, y: x.y }, { x: x.x2 ?? x.x, y: x.y2 ?? x.y }) / 10, 0);
-    const cornice = items.filter(x => x.type === 'cornice').reduce((s, x) => s + distance({ x: x.x, y: x.y }, { x: x.x2 ?? x.x, y: x.y2 ?? x.y }) / 10, 0);
-    return area * 900 + perimeter * 350 + area * 500 + spots * prices.spot + chandeliers * prices.chandelier + line * prices.lightLine + cornice * prices.cornice;
-  }, [area, perimeter, items]);
-
-  const snapshot = (): HistoryState => ({ points: points.map(p => ({ ...p })), items: items.map(x => ({ ...x })) });
-  const commit = (nextPoints: Point[], nextItems = items) => { setHistory(h => [...h.slice(-49), snapshot()]); setFuture([]); setPoints(nextPoints); setItems(nextItems); };
-  const undo = () => { const s = history.at(-1); if (!s) return; setFuture(f => [...f.slice(-49), snapshot()]); setHistory(h => h.slice(0, -1)); setPoints(s.points); setItems(s.items); };
-  const redo = () => { const s = future.at(-1); if (!s) return; setHistory(h => [...h.slice(-49), snapshot()]); setFuture(f => f.slice(0, -1)); setPoints(s.points); setItems(s.items); };
-
-  const pointFromEvent = (e: React.PointerEvent<SVGSVGElement | SVGLineElement>) => {
-    const svg = e.currentTarget instanceof SVGSVGElement ? e.currentTarget : e.currentTarget.ownerSVGElement;
-    const r = svg?.getBoundingClientRect();
-    if (!r) return { x: 0, y: 0 };
-    return { x: Math.max(0, Math.min(W, (e.clientX - r.left) / zoom)), y: Math.max(0, Math.min(H, (e.clientY - r.top) / zoom)) };
-  };
-
-  const addSide = () => {
-    if (!points.length) return;
-    const mm = parseDimension(sideLength);
-    const deg = Number(sideAngle.replace(',', '.').replace('°', ''));
-    if (!mm || mm < 100 || !Number.isFinite(deg)) return;
-    const last = points[points.length - 1];
-    const next = pointFromLengthAngle({ x: last.x * 10, y: last.y * 10 }, mm, deg);
-    commit([...points, { x: snap(next.x / 10, grid / 10), y: snap(next.y / 10, grid / 10) }]);
-  };
-
-  const updateWall = (i: number, value: string) => {
-    const mm = parseDimension(value);
-    if (!mm || mm <= 100) return;
-    const source = points.map(p => ({ x: p.x * 10, y: p.y * 10 }));
-    const next = orthogonal && source.length === 4 ? resizeOrthogonalWall(source, i, mm) : resizeWallKeepingAdjacent(source, i, mm);
-    commit(next.map(p => ({ x: p.x / 10, y: p.y / 10 })));
-  };
-
-  const addItem = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (tool === 'select' || tool === 'draw') return;
-    const p = pointFromEvent(e);
-    const id = items.length ? Math.max(...items.map(x => x.id)) + 1 : 1;
-    const item: Item = { id, type: tool, x: snap(p.x, grid / 10), y: snap(p.y, grid / 10) };
-    if (tool === 'lightLine') { item.x2 = item.x + 140; item.y2 = item.y; }
-    if (tool === 'cornice') { item.x2 = item.x + 90; item.y2 = item.y; }
-    commit(points, [...items, item]); setSelectedItem(id); setSelectedWall(null); setSelectedPoint(null);
-  };
-
-  return <main className="planner-page">
-    <header className="planner-header">
-      <div className="planner-brand"><div className="planner-logo">P</div><div><strong>Potolok Planner</strong><span>Планировщик натяжных потолков</span></div></div>
-      <div className="planner-project"><label>Проект</label><input value={projectName} onChange={e => setProjectName(e.target.value)} /></div>
-      <div className="planner-actions"><button onClick={undo} disabled={!history.length}>↶ Отмена</button><button onClick={redo} disabled={!future.length}>↷ Повтор</button><button className="primary" onClick={() => window.print()}>Печать / PDF</button></div>
-    </header>
-
-    <section className="planner-toolbar">
-      <button className={tool === 'select' ? 'active' : ''} onClick={() => setTool('select')}>↖ Выбор</button>
-      <button className={tool === 'draw' ? 'active' : ''} onClick={() => setTool('draw')}>⌘ Геометрия</button>
-      <span className="toolbar-divider" />
-      <button className={orthogonal ? 'active' : ''} onClick={() => setOrthogonal(v => !v)}>□ Прямые углы</button>
-      <button onClick={() => setShowAngles(v => !v)}>{showAngles ? '∠ Углы' : '∠ Углы выкл.'}</button>
-      <button onClick={() => setShowDiagonals(v => !v)}>{showDiagonals ? '⌁ Диагонали' : '⌁ Диагонали выкл.'}</button>
-      <span className="grid-control">Сетка <select value={grid} onChange={e => setGrid(Number(e.target.value))}><option value={10}>10 мм</option><option value={50}>50 мм</option><option value={100}>100 мм</option></select></span>
-      <button onClick={() => setZoom(v => Math.max(.7, v - .1))}>−</button><button onClick={() => setZoom(v => Math.min(1.6, v + .1))}>＋</button>
-    </section>
-
-    <div className="planner-grid">
-      <aside className="planner-sidebar">
-        <div className="panel-title">Построитель потолка</div>
-        <div className="hint">Точный контур: сторона строится по длине и углу. Размеры можно вводить в мм, см или м.</div>
-        <div className="metric-grid"><div><span>Площадь</span><b>{area.toFixed(2)} м²</b></div><div><span>Периметр</span><b>{perimeter.toFixed(2)} м</b></div></div>
-        <div className="property-card">
-          <b>Добавить сторону</b>
-          <label>Длина<input value={sideLength} onChange={e => setSideLength(e.target.value)} placeholder="350 см"/><span>мм / см / м</span></label>
-          <label>Угол<input value={sideAngle} onChange={e => setSideAngle(e.target.value)} placeholder="0"/><span>°</span></label>
-          <button onClick={addSide}>Добавить сторону</button>
-          <small>От последней вершины. При прямых углах направление корректируется автоматически.</small>
-        </div>
-        <div className="panel-divider" />
-        <div className="panel-title">Элементы потолка</div>
-        {(Object.keys(labels) as ElementType[]).map(t => <button key={t} className="element-btn" onClick={() => setTool(t)}>＋ {labels[t]}</button>)}
-      </aside>
-
-      <section className="planner-canvas-wrap">
-        <svg className="planner-canvas" viewBox={`0 0 ${W} ${H}`} onPointerDown={addItem} style={{ transform: `scale(${zoom})`, transformOrigin: 'center' }}>
-          <defs><pattern id="grid-main" width={grid / 10} height={grid / 10} patternUnits="userSpaceOnUse"><path d={`M ${grid/10} 0 L 0 0 0 ${grid/10}`} fill="none" stroke="currentColor" opacity=".08"/></pattern></defs>
-          <rect width={W} height={H} fill="url(#grid-main)" />
-          {points.map((p, i) => { const q = points[(i + 1) % points.length]; const len = distance(p, q); const mx = (p.x + q.x) / 2; const my = (p.y + q.y) / 2; return <g key={i}>
-            <line x1={p.x} y1={p.y} x2={q.x} y2={q.y} className={selectedWall === i ? 'room-wall selected' : 'room-wall'} onClick={() => setSelectedWall(i)} />
-            <text x={mx} y={my - 8} className="dimension-label" textAnchor="middle" onDoubleClick={() => { setSelectedWall(i); const v = window.prompt('Длина стороны', `${Math.round(len * 10)} мм`); if (v) updateWall(i, v); }}>{Math.round(len * 10)} мм</text>
-            {showAngles && <text x={p.x + 12} y={p.y + 18} className="angle-label">{angleAt(points, i).toFixed(0)}°</text>}
-          </g>; })}
-          {points.map((p, i) => <circle key={`p${i}`} cx={p.x} cy={p.y} r={7} className={selectedPoint === i ? 'room-point selected' : 'room-point'} onClick={e => { e.stopPropagation(); setSelectedPoint(i); setSelectedWall(null); }} />)}
-          {showDiagonals && points.length >= 4 && <line x1={points[0].x} y1={points[0].y} x2={points[2].x} y2={points[2].y} className="diagonal-line" />}
-          {items.map(item => item.type === 'spot' ? <circle key={item.id} cx={item.x} cy={item.y} r={8} className="ceiling-element" onClick={e => { e.stopPropagation(); setSelectedItem(item.id); }} /> : item.type === 'chandelier' ? <circle key={item.id} cx={item.x} cy={item.y} r={15} className="ceiling-element" onClick={e => { e.stopPropagation(); setSelectedItem(item.id); }} /> : <line key={item.id} x1={item.x} y1={item.y} x2={item.x2} y2={item.y2} className="ceiling-element" onClick={e => { e.stopPropagation(); setSelectedItem(item.id); }} />)}
-          <text x={20} y={30} className="canvas-caption">{tool === 'draw' ? 'Построение контура' : 'CAD-режим потолка'}</text>
-        </svg>
-      </section>
-
-      <aside className="planner-sidebar">
-        <div className="panel-title">Параметры</div>
-        {selectedWall !== null && <div className="property-card"><b>Сторона {selectedWall + 1}</b><label>Длина<input defaultValue={Math.round(distance(points[selectedWall], points[(selectedWall + 1) % points.length]) * 10)} onBlur={e => updateWall(selectedWall, e.target.value)} /><span>мм</span></label><div>Угол: {angleAt(points, selectedWall).toFixed(1)}°</div></div>}
-        {selectedPoint !== null && <div className="property-card"><b>Вершина {selectedPoint + 1}</b><div>X: {(points[selectedPoint].x * 10).toFixed(0)} мм</div><div>Y: {(points[selectedPoint].y * 10).toFixed(0)} мм</div></div>}
-        {selectedItem !== null && <div className="property-card"><b>{labels[items.find(x => x.id === selectedItem)?.type ?? 'spot']}</b><div>Ед.: {units[items.find(x => x.id === selectedItem)?.type ?? 'spot']}</div><div>Цена: {prices[items.find(x => x.id === selectedItem)?.type ?? 'spot']} ₽</div></div>}
-        <div className="property-card"><b>Диагональ</b><div>{diagonal.toFixed(2)} м</div></div>
-        <div className="property-card"><b>Расчёт</b><div>Ориентировочно: <strong>{estimate.toLocaleString('ru-RU')} ₽</strong></div></div>
-      </aside>
-    </div>
-  </main>;
+export default function PlannerWorkspace(){
+ const[points,setPoints]=useState(initial),[items,setItems]=useState<Item[]>([]),[tool,setTool]=useState<'select'|'draw'|ElementType>('select');
+ const[orthogonal,setOrthogonal]=useState(true),[grid,setGrid]=useState(50),[sideLength,setSideLength]=useState(''),[sideAngle,setSideAngle]=useState('0');
+ const[selectedWall,setSelectedWall]=useState<number|null>(null),[selectedPoint,setSelectedPoint]=useState<number|null>(null),[selectedItem,setSelectedItem]=useState<number|null>(null);
+ const[showDiagonals,setShowDiagonals]=useState(true),[showAngles,setShowAngles]=useState(true),[zoom,setZoom]=useState(1),[projectName,setProjectName]=useState('Новая комната');
+ const[history,setHistory]=useState<HistoryState[]>([]),[future,setFuture]=useState<HistoryState[]>([]);
+ const area=useMemo(()=>polygonArea(points)/10000,[points]),perimeter=useMemo(()=>polygonPerimeter(points)/100,[points]),diagonal=useMemo(()=>points.length>=3?distance(points[0],points[2])/100:0,[points]);
+ const estimate=useMemo(()=>{const spots=items.filter(x=>x.type==='spot').length,ch=items.filter(x=>x.type==='chandelier').length;const line=items.filter(x=>x.type==='lightLine').reduce((s,x)=>s+distance({x:x.x,y:x.y},{x:x.x2??x.x,y:x.y2??x.y})/10,0),corn=items.filter(x=>x.type==='cornice').reduce((s,x)=>s+distance({x:x.x,y:x.y},{x:x.x2??x.x,y:x.y2??x.y})/10,0);return area*900+perimeter*350+area*500+spots*prices.spot+ch*prices.chandelier+line*prices.lightLine+corn*prices.cornice},[area,perimeter,items]);
+ const snapshot=():HistoryState=>({points:points.map(p=>({...p})),items:items.map(x=>({...x}))});
+ const commit=(nextPoints:Point[],nextItems=items)=>{setHistory(h=>[...h.slice(-49),snapshot()]);setFuture([]);setPoints(nextPoints);setItems(nextItems)};
+ const undo=()=>{const s=history.at(-1);if(!s)return;setFuture(f=>[...f.slice(-49),snapshot()]);setHistory(h=>h.slice(0,-1));setPoints(s.points);setItems(s.items)};
+ const redo=()=>{const s=future.at(-1);if(!s)return;setHistory(h=>[...h.slice(-49),snapshot()]);setFuture(f=>f.slice(0,-1));setPoints(s.points);setItems(s.items)};
+ const pointFromEvent=(e:React.PointerEvent<SVGSVGElement|SVGLineElement>)=>{const svg=e.currentTarget instanceof SVGSVGElement?e.currentTarget:e.currentTarget.ownerSVGElement,r=svg?.getBoundingClientRect();if(!r)return{x:0,y:0};return{x:Math.max(0,Math.min(W,(e.clientX-r.left)/zoom)),y:Math.max(0,Math.min(H,(e.clientY-r.top)/zoom))}};
+ const addSide=()=>{if(!points.length)return;const mm=parseDimension(sideLength),deg=Number(sideAngle.replace(',','.').replace('°',''));if(!mm||mm<100||!Number.isFinite(deg))return;const last=points[points.length-1],next=pointFromLengthAngle({x:last.x*10,y:last.y*10},mm,deg);commit([...points,{x:snap(next.x/10,grid/10),y:snap(next.y/10,grid/10)}])};
+ const updateWall=(i:number,value:string)=>{const mm=parseDimension(value);if(!mm||mm<=100)return;const source=points.map(p=>({x:p.x*10,y:p.y*10})),next=orthogonal&&source.length===4?resizeOrthogonalWall(source,i,mm):resizeWallKeepingAdjacent(source,i,mm);commit(next.map(p=>({x:p.x/10,y:p.y/10})))};
+ const addItem=(e:React.PointerEvent<SVGSVGElement>)=>{if(tool==='select'||tool==='draw')return;const p=pointFromEvent(e),id=items.length?Math.max(...items.map(x=>x.id))+1:1,item:Item={id,type:tool,x:snap(p.x,grid/10),y:snap(p.y,grid/10)};if(tool==='lightLine'){item.x2=item.x+140;item.y2=item.y}if(tool==='cornice'){item.x2=item.x+90;item.y2=item.y}commit(points,[...items,item]);setSelectedItem(id);setSelectedWall(null);setSelectedPoint(null)};
+ return <main className="planner-page">
+  <header className="planner-header"><div className="planner-brand"><div className="planner-logo">P</div><div><strong>Potolok Planner</strong><span>Планировщик натяжных потолков</span></div></div><div className="planner-project"><label>Проект</label><input value={projectName} onChange={e=>setProjectName(e.target.value)}/></div><div className="planner-actions"><button onClick={undo} disabled={!history.length}>↶ Отмена</button><button onClick={redo} disabled={!future.length}>↷ Повтор</button><button className="primary" onClick={()=>window.print()}>Печать / PDF</button></div></header>
+  <section className="planner-toolbar"><button className={tool==='select'?'active':''} onClick={()=>setTool('select')}>↖ Выбор</button><button className={tool==='draw'?'active':''} onClick={()=>setTool('draw')}>⌘ Геометрия</button><span className="toolbar-divider"/><button className={orthogonal?'active':''} onClick={()=>setOrthogonal(v=>!v)}>□ Прямые углы</button><button onClick={()=>setShowAngles(v=>!v)}>{showAngles?'∠ Углы':'∠ Углы выкл.'}</button><button onClick={()=>setShowDiagonals(v=>!v)}>{showDiagonals?'⌁ Диагонали':'⌁ Диагонали выкл.'}</button><span className="grid-control">Сетка <select value={grid} onChange={e=>setGrid(Number(e.target.value))}><option value={10}>10 мм</option><option value={50}>50 мм</option><option value={100}>100 мм</option></select></span><button onClick={()=>setZoom(v=>Math.max(.7,v-.1))}>−</button><button onClick={()=>setZoom(v=>Math.min(1.6,v+.1))}>＋</button></section>
+  <div className="planner-grid">
+   <aside className="planner-sidebar"><div className="panel-title">Построитель потолка</div><div className="hint">Точный контур: сторона строится по длине и углу. Размеры можно вводить в мм, см или м.</div><div className="metric-grid"><div><span>Площадь</span><b>{area.toFixed(2)} м²</b></div><div><span>Периметр</span><b>{perimeter.toFixed(2)} м</b></div></div><div className="property-card"><b>Добавить сторону</b><label>Длина<input value={sideLength} onChange={e=>setSideLength(e.target.value)} placeholder="350 см"/><span>мм / см / м</span></label><label>Угол<input value={sideAngle} onChange={e=>setSideAngle(e.target.value)} placeholder="0"/><span>°</span></label><button onClick={addSide}>Добавить сторону</button><small>От последней вершины. При прямых углах направление корректируется автоматически.</small></div><div className="panel-divider"/><div className="panel-title">Элементы потолка</div>{(Object.keys(labels) as ElementType[]).map(t=><button key={t} className="element-btn" onClick={()=>setTool(t)}>＋ {labels[t]}</button>)}</aside>
+   <section className="planner-canvas-wrap"><svg className="planner-canvas" viewBox={`0 0 ${W} ${H}`} onPointerDown={addItem} style={{transform:`scale(${zoom})`,transformOrigin:'center'}}><defs><pattern id="grid-main" width={grid/10} height={grid/10} patternUnits="userSpaceOnUse"><path d={`M ${grid/10} 0 L 0 0 0 ${grid/10}`} fill="none" stroke="currentColor" opacity=".08"/></pattern></defs><rect width={W} height={H} fill="url(#grid-main)"/>{points.map((p,i)=>{const q=points[(i+1)%points.length],len=distance(p,q),mx=(p.x+q.x)/2,my=(p.y+q.y)/2;return <g key={i}><line x1={p.x} y1={p.y} x2={q.x} y2={q.y} className={selectedWall===i?'room-wall selected':'room-wall'} onClick={()=>setSelectedWall(i)}/><text x={mx} y={my-8} className="dimension-label" textAnchor="middle" onDoubleClick={()=>{setSelectedWall(i);const v=window.prompt('Длина стороны',`${Math.round(len*10)} мм`);if(v)updateWall(i,v)}}>{Math.round(len*10)} мм</text>{showAngles&&<text x={p.x+12} y={p.y+18} className="angle-label">{angleAt(points,i).toFixed(0)}°</text>}</g>})}{points.map((p,i)=><circle key={`p${i}`} cx={p.x} cy={p.y} r={7} className={selectedPoint===i?'room-point selected':'room-point'} onClick={e=>{e.stopPropagation();setSelectedPoint(i);setSelectedWall(null)}}/>)}{showDiagonals&&points.length>=4&&<line x1={points[0].x} y1={points[0].y} x2={points[2].x} y2={points[2].y} className="diagonal-line"/>}{items.map(item=>item.type==='spot'?<circle key={item.id} cx={item.x} cy={item.y} r={8} className="ceiling-element" onClick={e=>{e.stopPropagation();setSelectedItem(item.id)}}/>:item.type==='chandelier'?<circle key={item.id} cx={item.x} cy={item.y} r={15} className="ceiling-element" onClick={e=>{e.stopPropagation();setSelectedItem(item.id)}}/>:<line key={item.id} x1={item.x} y1={item.y} x2={item.x2} y2={item.y2} className="ceiling-element" onClick={e=>{e.stopPropagation();setSelectedItem(item.id)}}/>)}<text x={20} y={30} className="canvas-caption">{tool==='draw'?'Построение контура':'CAD-режим потолка'}</text></svg></section>
+   <aside className="planner-sidebar"><div className="panel-title">Параметры</div>{selectedWall!==null&&<div className="property-card"><b>Сторона {selectedWall+1}</b><label>Длина<input defaultValue={Math.round(distance(points[selectedWall],points[(selectedWall+1)%points.length])*10)} onBlur={e=>updateWall(selectedWall,e.target.value)}/><span>мм</span></label><div>Угол: {angleAt(points,selectedWall).toFixed(1)}°</div></div>}{selectedPoint!==null&&<div className="property-card"><b>Вершина {selectedPoint+1}</b><div>X: {(points[selectedPoint].x*10).toFixed(0)} мм</div><div>Y: {(points[selectedPoint].y*10).toFixed(0)} мм</div></div>}{selectedItem!==null&&<div className="property-card"><b>{labels[items.find(x=>x.id===selectedItem)?.type??'spot']}</b><div>Ед.: {units[items.find(x=>x.id===selectedItem)?.type??'spot']}</div><div>Цена: {prices[items.find(x=>x.id===selectedItem)?.type??'spot']} ₽</div></div>}<div className="property-card"><b>Диагональ</b><div>{diagonal.toFixed(2)} м</div></div><div className="property-card"><b>Расчёт</b><div>Ориентировочно: <strong>{estimate.toLocaleString('ru-RU')} ₽</strong></div></div></aside>
+  </div>
+ </main>;
 }
