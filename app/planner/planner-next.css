@@ -13,3 +13,30 @@
 /* visual left navigation blocks */
 .planner-sidebar:before{content:'ЧЕРТЁЖ';display:block;height:32px;padding:0 10px;border-bottom:2px solid #087cf0;font-size:12px;line-height:32px;font-weight:600;color:#3d4249;margin:-10px -10px 8px}
 @media(max-width:900px){.planner-grid{grid-template-columns:320px minmax(420px,1fr)}.planner-canvas{margin-left:30px}.planner-toolbar button{padding:0 10px}}
+
+/* Functional floating tool rail. Buttons keep their existing React handlers. */
+.planner-page{position:relative}
+.planner-canvas-wrap::after,.planner-canvas-wrap::before{display:none!important}
+.planner-toolbar{position:absolute;right:12px;top:50%;transform:translateY(-50%);z-index:50;width:46px;min-height:0;height:auto;padding:6px;display:flex;flex-direction:column;align-items:center;gap:3px;border:1px solid #dfe3e8;border-radius:8px;background:rgba(255,255,255,.97);box-shadow:0 5px 18px rgba(25,31,38,.12)}
+.planner-toolbar .toolbar-divider,.planner-toolbar .grid-control,.planner-toolbar .planner-status{display:none}
+.planner-toolbar>button{width:34px;height:34px;min-width:34px;padding:0;border:0!important;border-radius:5px;background:transparent;color:#1687f7;font-size:0;display:grid;place-items:center;cursor:pointer}
+.planner-toolbar>button:hover,.planner-toolbar>button.active{background:#eef7ff;color:#0b78dc}
+.planner-toolbar>button:nth-of-type(1)::before{content:'↖';font-size:19px}
+.planner-toolbar>button:nth-of-type(2)::before{content:'□';font-size:19px}
+.planner-toolbar>button:nth-of-type(3)::before{content:'↗';font-size:18px}
+.planner-toolbar>button:nth-of-type(4)::before{content:'⊥';font-size:18px}
+.planner-toolbar>button:nth-of-type(5)::before{content:'∠';font-size:18px}
+.planner-toolbar>button:nth-of-type(6)::before{content:'⌁';font-size:18px}
+.planner-toolbar>button:nth-of-type(7)::before{content:'−';font-size:20px}
+.planner-toolbar>button:nth-of-type(8)::before{content:'+';font-size:20px}
+.left-tools-section{display:contents}
+.left-tools-section .element-btn{position:fixed;right:18px;width:34px;height:34px;min-width:34px;padding:0;margin:0;border:0!important;border-radius:5px;background:rgba(255,255,255,.97)!important;color:#1687f7;font-size:0!important;z-index:49;box-shadow:0 5px 18px rgba(25,31,38,.12);display:grid;place-items:center}
+.left-tools-section .element-btn:nth-of-type(1){top:calc(50% + 116px)}
+.left-tools-section .element-btn:nth-of-type(2){top:calc(50% + 153px)}
+.left-tools-section .element-btn:nth-of-type(3){top:calc(50% + 190px)}
+.left-tools-section .element-btn:nth-of-type(4){top:calc(50% + 227px)}
+.left-tools-section .element-btn:nth-of-type(1)::before{content:'•';font-size:25px}
+.left-tools-section .element-btn:nth-of-type(2)::before{content:'✦';font-size:17px}
+.left-tools-section .element-btn:nth-of-type(3)::before{content:'↔';font-size:18px}
+.left-tools-section .element-btn:nth-of-type(4)::before{content:'⌒';font-size:18px}
+@media(max-width:720px){.planner-toolbar{right:6px}.left-tools-section .element-btn{right:12px}}
