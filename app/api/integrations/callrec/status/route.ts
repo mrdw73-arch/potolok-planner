@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { isCallRecConfigured } from '../../../../../..//lib/integrations/callrec';
+import { isCallRecConfigured } from '../../../../../lib/integrations/callrec';
 
 export async function GET() {
   return NextResponse.json({
