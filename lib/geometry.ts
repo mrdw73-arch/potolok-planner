@@ -19,6 +19,37 @@ export function diagonalLength(a: Point, b: Point) {
   return distance(a, b);
 }
 
+/** Creates a point from a start point, millimetre length and angle in degrees. */
+export function pointFromLengthAngle(start: Point, lengthMm: number, angleDeg: number): Point {
+  const angle = (angleDeg * Math.PI) / 180;
+  return {
+    x: start.x + lengthMm * Math.cos(angle),
+    y: start.y - lengthMm * Math.sin(angle),
+  };
+}
+
+/** Returns the direction angle of a segment in degrees, using the ceiling editor's screen convention. */
+export function segmentAngle(a: Point, b: Point) {
+  return (Math.atan2(-(b.y - a.y), b.x - a.x) * 180) / Math.PI;
+}
+
+/** Formats a millimetre value for compact dimension labels. */
+export function formatDimension(lengthMm: number) {
+  if (!Number.isFinite(lengthMm)) return '—';
+  if (Math.abs(lengthMm) >= 1000) return `${(lengthMm / 1000).toFixed(lengthMm % 1000 === 0 ? 0 : 2)} м`;
+  return `${Math.round(lengthMm)} мм`;
+}
+
+/** Projects a point onto a segment and returns the closest point plus normalized position t. */
+export function projectPointToSegment(point: Point, a: Point, b: Point) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lengthSquared = dx * dx + dy * dy;
+  if (!lengthSquared) return { point: { ...a }, t: 0 };
+  const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared));
+  return { point: { x: a.x + dx * t, y: a.y + dy * t }, t };
+}
+
 export function polygonArea(points: Point[]) {
   let sum = 0;
   for (let i = 0; i < points.length; i += 1) {
@@ -117,10 +148,7 @@ export function orthogonalizeRoom(points: Point[]): Point[] {
   return result;
 }
 
-/**
- * Resizes a 4-corner orthogonal room and keeps the opposite wall synchronized.
- * The expected order is clockwise or counter-clockwise around the room.
- */
+/** Resizes a 4-corner orthogonal room and keeps the opposite wall synchronized. */
 export function resizeOrthogonalWall(points: Point[], index: number, lengthMm: number): Point[] {
   if (points.length !== 4 || !Number.isFinite(lengthMm) || lengthMm <= 0) return points;
 
