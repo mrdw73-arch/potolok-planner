@@ -17,7 +17,7 @@ const W = 800;
 const H = 600;
 const initialPoints: Point[] = [{ x: 0, y: 0 }, { x: 5000, y: 0 }, { x: 5000, y: 3600 }, { x: 0, y: 3600 }];
 const labels: Record<ElementType, string> = { spot: 'Светильник', chandelier: 'Люстра', cornice: 'Карниз', lightLine: 'Световая линия' };
-const defaultPrices = { canvasPricePerM2: 900, profilePricePerM: 350, insertPricePerM: 120, fastenerPricePerM: 45, spotlightPrice: 700, chandelierPrice: 1200, cornicePricePerM: 650, wastePercent: 0, laborPricePerM2: 500 };
+const defaultPrices = { canvasPricePerM2: 900, profilePricePerM: 350, insertPricePerM: 120, fastenerPricePerM: 45, spotlightPrice: 700, chandelierPrice: 1200, lightLinePricePerM: 950, cornicePricePerM: 650, wastePercent: 0, laborPricePerM2: 500 };
 
 function clonePoints(points: Point[]) { return points.map(p => ({ ...p })); }
 function cloneElements(elements: CeilingElement[]) { return elements.map(e => ({ ...e })); }
