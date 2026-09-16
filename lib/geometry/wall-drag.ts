@@ -60,6 +60,54 @@ export function dragWall(
   return next;
 }
 
+/**
+ * Drag a wall from a stable pointer-down snapshot.
+ *
+ * Unlike `dragWall`, this function snaps the wall's absolute target position
+ * relative to the original geometry instead of repeatedly snapping each
+ * pointer delta. That prevents the wall from jumping by a full grid step when
+ * the pointer has only moved a few pixels.
+ */
+export function dragWallFromStart(
+  startPoints: DrawPoint[],
+  wallIndex: number,
+  startPointer: DrawPoint,
+  pointer: DrawPoint,
+  options: WallDragOptions = {},
+) {
+  if (startPoints.length < 2 || wallIndex < 0 || wallIndex >= startPoints.length) return startPoints;
+
+  const pointerDelta = {
+    x: pointer.x - startPointer.x,
+    y: pointer.y - startPointer.y,
+  };
+  const rawDelta = options.orthogonal === false
+    ? pointerDelta
+    : projectWallDelta(startPoints, wallIndex, pointerDelta);
+
+  const grid = options.grid && options.grid > 0 ? options.grid : 1;
+  const wallStart = startPoints[wallIndex];
+  const target = {
+    x: wallStart.x + rawDelta.x,
+    y: wallStart.y + rawDelta.y,
+  };
+  const snappedTarget = snapDrawingPoint(target, grid);
+  const delta = {
+    x: snappedTarget.x - wallStart.x,
+    y: snappedTarget.y - wallStart.y,
+  };
+  const next = moveSegment(startPoints, wallIndex, delta);
+
+  if (!options.minLength) return next;
+
+  for (let i = 0; i < next.length; i += 1) {
+    const a = next[i];
+    const b = next[(i + 1) % next.length];
+    if (Math.hypot(b.x - a.x, b.y - a.y) < options.minLength) return startPoints;
+  }
+  return next;
+}
+
 export function wallNormal(points: DrawPoint[], wallIndex: number) {
   if (points.length < 2 || wallIndex < 0 || wallIndex >= points.length) return { x: 0, y: 0 };
   const a = points[wallIndex];
