@@ -36,3 +36,14 @@
 @media (max-width:720px) {
   .planner-canvas-wrap::after { right:7px; width:38px; font-size:16px; line-height:34px; }
 }
+
+
+.drawing-precision{border:1px solid #dfe5ee;border-radius:12px;background:#fff}
+.precision-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}
+.precision-row input{min-width:0;height:34px;border:1px solid #d5dce7;border-radius:7px;padding:0 9px;font:inherit}
+.precision-row button{grid-column:1/-1;height:34px;border:0;border-radius:7px;background:#1f6feb;color:#fff;cursor:pointer}
+.precision-row button:disabled{opacity:.45;cursor:not-allowed}
+.draw-preview-line{stroke:#1f6feb;stroke-width:2.5;stroke-dasharray:8 5;pointer-events:none}
+.draw-preview-box{fill:#fff;stroke:#1f6feb;stroke-width:1.2;opacity:.96;pointer-events:none}
+.draw-preview-text{font-size:12px;font-weight:700;fill:#1f6feb;pointer-events:none}
+.planner-canvas.drawing-mode{cursor:crosshair}
