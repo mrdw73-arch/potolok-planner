@@ -89,6 +89,11 @@ export function parseDimension(value: string) {
   return number;
 }
 
+/** Solves the third side of a triangle from two sides and the included angle. */
+export function triangleThirdSide(aMm: number, bMm: number, angleDeg: number) {
+  return Math.round(Math.sqrt(Math.max(0, aMm * aMm + bMm * bMm - 2 * aMm * bMm * Math.cos((angleDeg * Math.PI) / 180))));
+}
+
 /** Resizes one side while translating the following vertex so the adjacent side stays attached. */
 export function resizeWallKeepingAdjacent(
   points: Point[],
