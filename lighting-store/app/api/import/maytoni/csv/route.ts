@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { upsertProducts } from '../../../../../lib/db';
+import { ensureCatalogSchema,finishImportRun,getDb,startImportRun,upsertProducts } from '../../../../../lib/db';
 
 export async function POST(request:NextRequest){
   try{
@@ -23,8 +23,18 @@ export async function POST(request:NextRequest){
       sourceUrl:String(p.sourceUrl||'')
     })).filter((p:any)=>p.sku);
     if(!items.length)return NextResponse.json({error:'В данных нет артикулов SKU.'},{status:422});
+    await ensureCatalogSchema();
+    const sql=getDb();
+    const runId=await startImportRun('Maytoni','CSV',items.length);
+    let updated=0;
+    if(sql){
+      const skus=items.map((p:any)=>p.sku);
+      const existing=await sql`SELECT sku FROM products WHERE sku = ANY(${skus})`;
+      updated=existing.length;
+    }
     const result=await upsertProducts(items);
-    return NextResponse.json({saved:result.saved,storage:result});
+    if(runId) await finishImportRun(runId,{status:'completed',saved:result.saved,updated,errors:0});
+    return NextResponse.json({saved:result.saved,updated,errors:0,found:items.length,runId,storage:result});
   }catch(error){
     return NextResponse.json({error:error instanceof Error?error.message:'Ошибка импорта CSV.'},{status:500});
   }
