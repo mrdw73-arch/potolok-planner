@@ -88,7 +88,19 @@ export async function POST(request:NextRequest){
   try{
     const body=await request.json();const urls:string[]=Array.isArray(body?.urls)?body.urls:[];
     if(!urls.length||urls.length>50)return NextResponse.json({error:'Передайте массив из 1–50 URL карточек Maytoni.'},{status:400});
-    const results:any[]=[];\n    for(let i=0;i<urls.length;i+=5){\n      const chunk=urls.slice(i,i+5);\n      const chunkResults=await Promise.all(chunk.map(async url=>{try{const product=await fetchDetail(url);return product?{ok:true,product}:{ok:false,url,error:'Карточка не распознана.'};}catch(error){return {ok:false,url,error:error instanceof Error?error.message:'Ошибка'};}}));\n      results.push(...chunkResults);\n    }
+    const results:any[]=[];
+    for(let i=0;i<urls.length;i+=5){
+      const chunk=urls.slice(i,i+5);
+      const chunkResults=await Promise.all(chunk.map(async url=>{
+        try{
+          const product=await fetchDetail(url);
+          return product?{ok:true,product}:{ok:false,url,error:'Карточка не распознана.'};
+        }catch(error){
+          return {ok:false,url,error:error instanceof Error?error.message:'Ошибка'};
+        }
+      }));
+      results.push(...chunkResults);
+    }
     const products=results.filter(x=>x.ok).map(x=>x.product);
     const storage=await upsertProducts(products);
     return NextResponse.json({source:'Maytoni product pages',total:results.length,imported:results.filter(x=>x.ok).length,products,errors:results.filter(x=>!x.ok),storage});
