@@ -20,13 +20,13 @@ export async function GET(request:NextRequest){
     const html=await response.text();
     const seen=new Set<string>();
     const urls:string[]=[];
-    const re=/href=["']([^"']*\\/catalog\\/[^"']+\\/)["']/gi;
+    const re=/href=["']([^"']*\/catalog\/[^"']+\/)["']/gi;
     let m:RegExpExecArray|null;
     while((m=re.exec(html))){
       try{
         const u=new URL(decode(m[1]),url);
         if(u.hostname!==allowedHost||!u.pathname.startsWith('/catalog/'))continue;
-        const href=u.href.replace(/\\/$/,'')+'/';
+        const href=u.href.replace(/\/$/,'')+'/';
         const parts=u.pathname.split('/').filter(Boolean);
         const last=parts.at(-1)||'';
         if(last.length<5||last.includes('?')||last==='catalog')continue;
