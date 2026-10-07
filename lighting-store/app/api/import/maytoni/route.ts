@@ -14,6 +14,10 @@ function clean(v:string){return decode(v.replace(/<script[\s\S]*?<\/script>/gi,'
 function priceNumber(v?:string){if(!v)return null;const n=Number(v.replace(/[^0-9,.-]/g,'').replace(',','.'));return Number.isFinite(n)?n:null;}
 function absolute(v:string,base:URL){try{return new URL(decode(v),base).href}catch{return ''}}
 function unique(a:string[]){return [...new Set(a.filter(Boolean))]}
+function categoryFromUrl(url:URL){
+  const parts=url.pathname.split('/').filter(Boolean);
+  return parts.length>=3?parts[parts.length-2]:'Декоративный свет';
+}
 
 function extractImages(html:string,base:URL){
   const out:string[]=[];
@@ -57,7 +61,7 @@ function parseDetail(html:string,url:URL):DetailProduct|null{
     attributes['Класс пылевлагозащиты']
   ]);
   return {
-    id:'maytoni-'+sku.toLowerCase(),sku,name,category:'Подвесные светильники',price,
+    id:'maytoni-'+sku.toLowerCase(),sku,name,category:categoryFromUrl(url),price,
     image:images[0]||'',images,sourceUrl:url.href,brand:attributes['Бренд']||'Maytoni',
     stock:stockMatch?Number(stockMatch[1]):(stockText.includes('>20')?21:0),
     stockText,description,specs,attributes
@@ -67,7 +71,7 @@ function parseDetail(html:string,url:URL):DetailProduct|null{
 async function fetchDetail(sourceUrl:string){
   const url=new URL(sourceUrl);
   if(url.protocol!=='https:'||url.hostname!==allowedHost||!url.pathname.startsWith('/catalog/'))throw new Error('Недопустимый URL Maytoni.');
-  const response=await fetch(url.href,{headers:{'User-Agent':'LumiHub Catalog Importer/1.1'},cache:'no-store'});
+  const response=await fetch(url.href,{headers:{'User-Agent':'LumiHub Catalog Importer/2.0'},cache:'no-store'});
   if(!response.ok)throw new Error('Maytoni HTTP '+response.status);
   return parseDetail(await response.text(),url);
 }
@@ -82,7 +86,7 @@ export async function GET(request:NextRequest){
 export async function POST(request:NextRequest){
   try{
     const body=await request.json();const urls:string[]=Array.isArray(body?.urls)?body.urls:[];
-    if(!urls.length||urls.length>20)return NextResponse.json({error:'Передайте массив из 1–20 URL карточек Maytoni.'},{status:400});
+    if(!urls.length||urls.length>50)return NextResponse.json({error:'Передайте массив из 1–50 URL карточек Maytoni.'},{status:400});
     const results=await Promise.all(urls.map(async url=>{try{const product=await fetchDetail(url);return product?{ok:true,product}:{ok:false,url,error:'Карточка не распознана.'};}catch(error){return {ok:false,url,error:error instanceof Error?error.message:'Ошибка'};}}));
     const products=results.filter(x=>x.ok).map(x=>x.product);
     const storage=await upsertProducts(products);
