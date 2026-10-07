@@ -1,116 +1,91 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-type ImportedProduct = {
-  id: string;
-  sku: string;
-  name: string;
-  category: string;
-  price: number | null;
-  image: string;
-  sourceUrl: string;
-  brand: string;
-  stock: number;
+type DetailProduct = {
+  id:string; sku:string; name:string; category:string; price:number|null;
+  image:string; images:string[]; sourceUrl:string; brand:string; stock:number;
+  stockText:string; description:string; specs:string[]; attributes:Record<string,string>;
 };
 
-const allowedHost = 'maytoni.ru';
+const allowedHost='maytoni.ru';
 
-function decode(value: string) {
-  return value
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/gi, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&#x2F;/gi, '/')
-    .trim();
+function decode(v:string){return v.replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#x27;/gi,"'").replace(/&#39;/g,"'").replace(/&nbsp;/g,' ').replace(/&#x2F;/gi,'/').replace(/&#8211;/gi,'–').replace(/&#8212;/gi,'—').trim();}
+function clean(v:string){return decode(v.replace(/<script[\\s\\S]*?<\\/script>/gi,' ').replace(/<style[\\s\\S]*?<\\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\\s+/g,' '));}
+function priceNumber(v?:string){if(!v)return null;const n=Number(v.replace(/[^0-9,.-]/g,'').replace(',','.'));return Number.isFinite(n)?n:null;}
+function absolute(v:string,base:URL){try{return new URL(decode(v),base).href}catch{return ''}}
+function unique(a:string[]){return [...new Set(a.filter(Boolean))]}
+
+function extractImages(html:string,base:URL){
+  const out:string[]=[];
+  const patterns=[
+    /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/gi,
+    /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/gi,
+    /(?:src|data-src|data-lazy-src)=["']([^"']+\\.(?:jpg|jpeg|png|webp)(?:\\?[^"']*)?)["']/gi
+  ];
+  for(const re of patterns){let m:RegExpExecArray|null;while((m=re.exec(html)))out.push(absolute(m[1],base));}
+  return unique(out).slice(0,12);
 }
 
-function priceNumber(value: string | undefined) {
-  if (!value) return null;
-  const n = Number(value.replace(/[^0-9,.-]/g, '').replace(',', '.'));
-  return Number.isFinite(n) ? n : null;
+function extractAttributes(html:string){
+  const attrs:Record<string,string>={};
+  const add=(k:string,v:string)=>{const key=clean(k),val=clean(v);if(key&&val&&key.length<100&&val.length<300&&!attrs[key])attrs[key]=val;};
+  const rowRe=/<tr[^>]*>[\\s\\S]*?<th[^>]*>([\\s\\S]*?)<\\/th>[\\s\\S]*?<td[^>]*>([\\s\\S]*?)<\\/td>[\\s\\S]*?<\\/tr>/gi;
+  let m:RegExpExecArray|null;
+  while((m=rowRe.exec(html)))add(m[1],m[2]);
+  const dlRe=/<dt[^>]*>([\\s\\S]*?)<\\/dt>[\\s\\S]*?<dd[^>]*>([\\s\\S]*?)<\\/dd>/gi;
+  while((m=dlRe.exec(html)))add(m[1],m[2]);
+  return attrs;
 }
 
-function parseProducts(html: string, baseUrl: URL): ImportedProduct[] {
-  const seen = new Set<string>();
-  const result: ImportedProduct[] = [];
-  const linkRe = /href=["']([^"']*\/catalog\/[^"']+\/)["']/gi;
-  let match: RegExpExecArray | null;
-
-  while ((match = linkRe.exec(html))) {
-    const raw = decode(match[1]);
-    const url = new URL(raw, baseUrl);
-    if (url.hostname !== allowedHost) continue;
-    const sourceUrl = url.href.replace(/\/$/, '') + '/';
-    if (seen.has(sourceUrl)) continue;
-
-    const pos = match.index;
-    const chunk = html.slice(Math.max(0, pos - 5000), Math.min(html.length, pos + 12000));
-    const sku = (chunk.match(/Артикул:\s*([A-Z0-9-]{5,})/i)?.[1] || sourceUrl.split('/').filter(Boolean).pop() || '').toUpperCase();
-    const title =
-      decode(chunk.match(/alt=["']([^"']*(?:светильник|люстра|бра|лампа)[^"']*)["']/i)?.[1] || '') ||
-      decode(chunk.match(/<h[1-4][^>]*>([^<]{5,180})<\/h[1-4]>/i)?.[1] || '');
-
-    if (!sku || !title) continue;
-
-    const priceMatch = chunk.match(/([0-9][0-9\s]{2,})\s*₽/);
-    const image =
-      decode(chunk.match(/(?:src|data-src)=["'](https?:\/\/[^"']+\.(?:jpg|jpeg|png|webp)[^"']*)["']/i)?.[1] || '') ||
-      decode(chunk.match(/(?:src|data-src)=["']([^"']+\.(?:jpg|jpeg|png|webp)[^"']*)["']/i)?.[1] || '');
-
-    result.push({
-      id: 'maytoni-' + sku.toLowerCase(),
-      sku,
-      name: title,
-      category: 'Подвесные светильники',
-      price: priceNumber(priceMatch?.[1]),
-      image: image ? new URL(image, baseUrl).href : '',
-      sourceUrl,
-      brand: 'Maytoni',
-      stock: 0,
-    });
-    seen.add(sourceUrl);
-  }
-
-  return result;
+function parseDetail(html:string,url:URL):DetailProduct|null{
+  const text=clean(html);
+  const sku=(text.match(/Артикул\\s+([A-Z0-9-]{5,})/i)?.[1]||url.pathname.split('/').filter(Boolean).pop()||'').toUpperCase();
+  const name=clean(html.match(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/i)?.[1]||html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1]||'');
+  if(!sku||!name)return null;
+  const attributes=extractAttributes(html);
+  const images=extractImages(html,url);
+  const price=priceNumber(text.match(/([0-9][0-9\\s]{2,})\\s*₽/)?.[1]);
+  const stockText=text.match(/В наличии:\s*([^|]{1,60})/i)?.[1]?.trim()||'';
+  const stockMatch=stockText.match(/(\\d+)/);
+  const description=clean(html.match(/О серии[\\s\\S]{0,1800}/i)?.[0]||'');
+  const specs=unique([
+    attributes['Источник света'],
+    attributes['Количество ламп']?attributes['Количество ламп']+' ламп':'',
+    attributes['Цветовая температура']?attributes['Цветовая температура']+'K':'',
+    attributes['Мощность'],
+    attributes['Световой поток'],
+    attributes['Класс пылевлагозащиты']
+  ]);
+  return {
+    id:'maytoni-'+sku.toLowerCase(),sku,name,category:'Подвесные светильники',price,
+    image:images[0]||'',images,sourceUrl:url.href,brand:attributes['Бренд']||'Maytoni',
+    stock:stockMatch?Number(stockMatch[1]):(stockText.includes('>20')?21:0),
+    stockText,description,specs,attributes
+  };
 }
 
-export async function GET(request: NextRequest) {
-  const input = request.nextUrl.searchParams.get('url');
-  const limit = Math.min(Math.max(Number(request.nextUrl.searchParams.get('limit') || '24'), 1), 100);
+async function fetchDetail(sourceUrl:string){
+  const url=new URL(sourceUrl);
+  if(url.protocol!=='https:'||url.hostname!==allowedHost||!url.pathname.startsWith('/catalog/'))throw new Error('Недопустимый URL Maytoni.');
+  const response=await fetch(url.href,{headers:{'User-Agent':'LumiHub Catalog Importer/1.1'},cache:'no-store'});
+  if(!response.ok)throw new Error('Maytoni HTTP '+response.status);
+  return parseDetail(await response.text(),url);
+}
 
-  if (!input) return NextResponse.json({ error: 'Передайте параметр url.' }, { status: 400 });
+export async function GET(request:NextRequest){
+  const input=request.nextUrl.searchParams.get('url');
+  if(!input)return NextResponse.json({error:'Передайте параметр url.'},{status:400});
+  try{const product=await fetchDetail(input);if(!product)return NextResponse.json({error:'Не удалось распознать карточку товара Maytoni.'},{status:422});return NextResponse.json({source:input,product});}
+  catch(error){return NextResponse.json({error:error instanceof Error?error.message:'Ошибка загрузки Maytoni.'},{status:502});}
+}
 
-  let url: URL;
-  try {
-    url = new URL(input);
-  } catch {
-    return NextResponse.json({ error: 'Некорректная ссылка.' }, { status: 400 });
-  }
-
-  if (url.protocol !== 'https:' || url.hostname !== allowedHost || !url.pathname.startsWith('/catalog/')) {
-    return NextResponse.json({ error: 'Для прототипа разрешены только HTTPS-ссылки на разделы Maytoni.ru.' }, { status: 400 });
-  }
-
-  try {
-    const response = await fetch(url.href, {
-      headers: { 'User-Agent': 'LumiHub Catalog Importer/1.0' },
-      cache: 'no-store',
-    });
-    if (!response.ok) {
-      return NextResponse.json({ error: `Maytoni вернул HTTP ${response.status}.` }, { status: 502 });
-    }
-
-    const html = await response.text();
-    const products = parseProducts(html, url);
-
+export async function POST(request:NextRequest){
+  try{
+    const body=await request.json();const urls:string[]=Array.isArray(body?.urls)?body.urls:[];
+    if(!urls.length||urls.length>20)return NextResponse.json({error:'Передайте массив из 1–20 URL карточек Maytoni.'},{status:400});
+    const results=await Promise.all(urls.map(async url=>{try{const product=await fetchDetail(url);return product?{ok:true,product}:{ok:false,url,error:'Карточка не распознана.'};}catch(error){return {ok:false,url,error:error instanceof Error?error.message:'Ошибка'};}}));
     return NextResponse.json({
-      source: url.href,
-      totalDetected: products.length,
-      products: products.slice(0, limit),
-      note: 'Это первый прототип импорта раздела. Для полного каталога без потерь следующий этап — подключение официального CSV/XML/API Maytoni.',
+      source:'Maytoni product pages',total:results.length,imported:results.filter(x=>x.ok).length,
+      products:results.filter(x=>x.ok).map(x=>x.product),errors:results.filter(x=>!x.ok)
     });
-  } catch {
-    return NextResponse.json({ error: 'Не удалось получить страницу Maytoni. Попробуйте позже или используйте официальный CSV.' }, { status: 502 });
-  }
+  }catch{return NextResponse.json({error:'Некорректный JSON-запрос.'},{status:400});}
 }
