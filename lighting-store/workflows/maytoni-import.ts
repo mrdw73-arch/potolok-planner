@@ -2,6 +2,11 @@ import { getImportBatch, markImportBatch, getImportRun, finishImportRun } from "
 
 type BatchRow={position:number;url:string;attempts:number};
 
+async function loadRun(runId:string){
+  "use step";
+  return await getImportRun(runId);
+}
+
 async function loadBatch(runId:string):Promise<BatchRow[]>{
   "use step";
   return await getImportBatch(runId,5) as BatchRow[];
@@ -37,7 +42,7 @@ async function finish(runId:string,status:string,errorMessage=""){
 
 export async function runMaytoniImport(runId:string,baseUrl:string){
   "use workflow";
-  const run=await getImportRun(runId);
+  const run=await loadRun(runId);
   if(!run) throw new Error("Import run not found");
   const origin=baseUrl.replace(/\/$/,"");
   while(true){
