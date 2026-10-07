@@ -150,7 +150,7 @@ export async function updateImportRunStatus(id:string,status:string,errorMessage
 
 export async function getActiveImportRun(provider:string){
   const sql=getDb(); if(!sql) return null; await ensureCatalogSchema();
-  const rows=await sql\`SELECT id,provider,source,status,found,saved,updated,errors,processed,error_message,started_at,finished_at FROM import_runs WHERE provider=\${provider} AND status IN ('queued','running') ORDER BY started_at DESC LIMIT 1\`;
+  const rows=await sql`SELECT id,provider,source,status,found,saved,updated,errors,processed,error_message,started_at,finished_at FROM import_runs WHERE provider=${provider} AND status IN ('queued','running') ORDER BY started_at DESC LIMIT 1`;
   return rows[0]||null;
 }
 
