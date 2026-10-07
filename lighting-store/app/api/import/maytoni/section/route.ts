@@ -6,6 +6,31 @@ function decode(v:string){
   return v.replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#x27;/gi,"'").replace(/&#39;/g,"'").replace(/&nbsp;/g,' ').trim();
 }
 
+function extractCatalogLinks(html:string,base:URL){
+  const urls:string[]=[];
+  const seen=new Set<string>();
+  const tokens=html.split(/\s+/);
+  for(const token of tokens){
+    const cleanToken=token.replace(/^[^a-zA-Z]*(?:href|data-href)=/,'').replace(/^["']|["']$/g,'');
+    if(!cleanToken.includes('/catalog/'))continue;
+    const value=cleanToken.replace(/["'<>]/g,'');
+    const start=value.indexOf('/catalog/');
+    if(start<0)continue;
+    const path=value.slice(start).split(/[?#"']/,1)[0];
+    if(!path.endsWith('/'))continue;
+    try{
+      const u=new URL(path,base);
+      if(u.hostname!==allowedHost||!u.pathname.startsWith('/catalog/'))continue;
+      const parts=u.pathname.split('/').filter(Boolean);
+      const last=parts.at(-1)||'';
+      if(last.length<5||last==='catalog')continue;
+      const href=u.href.replace(/\/$/,'')+'/';
+      if(!seen.has(href)){seen.add(href);urls.push(href);}
+    }catch{}
+  }
+  return urls;
+}
+
 export async function GET(request:NextRequest){
   const input=request.nextUrl.searchParams.get('url');
   if(!input)return NextResponse.json({error:'Передайте параметр url.'},{status:400});
@@ -18,21 +43,7 @@ export async function GET(request:NextRequest){
     const response=await fetch(url.href,{headers:{'User-Agent':'LumiHub Catalog Importer/1.2'},cache:'no-store'});
     if(!response.ok)return NextResponse.json({error:'Maytoni HTTP '+response.status},{status:502});
     const html=await response.text();
-    const seen=new Set<string>();
-    const urls:string[]=[];
-    const re=new RegExp(`href=["']([^"']*/catalog/[^"']+/)["']`,'gi');
-    let m:RegExpExecArray|null;
-    while((m=re.exec(html))){
-      try{
-        const u=new URL(decode(m[1]),url);
-        if(u.hostname!==allowedHost||!u.pathname.startsWith('/catalog/'))continue;
-        const href=u.href.replace(/\/$/,'')+'/';
-        const parts=u.pathname.split('/').filter(Boolean);
-        const last=parts.at(-1)||'';
-        if(last.length<5||last.includes('?')||last==='catalog')continue;
-        if(!seen.has(href)){seen.add(href);urls.push(href);}
-      }catch{}
-    }
+    const urls=extractCatalogLinks(html,url);
     return NextResponse.json({source:url.href,total:urls.length,urls});
   }catch{return NextResponse.json({error:'Не удалось получить раздел Maytoni.'},{status:502});}
 }
