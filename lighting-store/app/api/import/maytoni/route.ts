@@ -10,7 +10,7 @@ type DetailProduct = {
 const allowedHost='maytoni.ru';
 
 function decode(v:string){return v.replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#x27;/gi,"'").replace(/&#39;/g,"'").replace(/&nbsp;/g,' ').replace(/&#x2F;/gi,'/').replace(/&#8211;/gi,'–').replace(/&#8212;/gi,'—').trim();}
-function clean(v:string){return decode(v.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ')));}
+function clean(v:string){return decode(v.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' '));}
 function priceNumber(v?:string){if(!v)return null;const n=Number(v.replace(/[^0-9,.-]/g,'').replace(',','.'));return Number.isFinite(n)?n:null;}
 function absolute(v:string,base:URL){try{return new URL(decode(v),base).href}catch{return ''}}
 function unique(a:string[]){return [...new Set(a.filter(Boolean))]}
@@ -20,7 +20,7 @@ function extractImages(html:string,base:URL){
   const patterns=[
     /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/gi,
     /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/gi,
-    /(?:src|data-src|data-lazy-src)=["']([^"']+\\.(?:jpg|jpeg|png|webp)(?:\\?[^"']*)?)["']/gi
+    /(?:src|data-src|data-lazy-src)=["']([^"']+\.(?:jpg|jpeg|png|webp)(?:\?[^"']*)?)["']/gi
   ];
   for(const re of patterns){let m:RegExpExecArray|null;while((m=re.exec(html)))out.push(absolute(m[1],base));}
   return unique(out).slice(0,12);
@@ -29,25 +29,25 @@ function extractImages(html:string,base:URL){
 function extractAttributes(html:string){
   const attrs:Record<string,string>={};
   const add=(k:string,v:string)=>{const key=clean(k),val=clean(v);if(key&&val&&key.length<100&&val.length<300&&!attrs[key])attrs[key]=val;};
-  const rowRe=/<tr[^>]*>[\\s\\S]*?<th[^>]*>([\\s\\S]*?)<\\/th>[\\s\\S]*?<td[^>]*>([\\s\\S]*?)<\\/td>[\\s\\S]*?<\\/tr>/gi;
+  const rowRe=/<tr[^>]*>[\s\S]*?<th[^>]*>([\s\S]*?)<\/th>[\s\S]*?<td[^>]*>([\s\S]*?)<\/td>[\s\S]*?<\/tr>/gi;
   let m:RegExpExecArray|null;
   while((m=rowRe.exec(html)))add(m[1],m[2]);
-  const dlRe=/<dt[^>]*>([\\s\\S]*?)<\\/dt>[\\s\\S]*?<dd[^>]*>([\\s\\S]*?)<\\/dd>/gi;
+  const dlRe=/<dt[^>]*>([\s\S]*?)<\/dt>[\s\S]*?<dd[^>]*>([\s\S]*?)<\/dd>/gi;
   while((m=dlRe.exec(html)))add(m[1],m[2]);
   return attrs;
 }
 
 function parseDetail(html:string,url:URL):DetailProduct|null{
   const text=clean(html);
-  const sku=(text.match(/Артикул\\s+([A-Z0-9-]{5,})/i)?.[1]||url.pathname.split('/').filter(Boolean).pop()||'').toUpperCase();
-  const name=clean(html.match(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/i)?.[1]||html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1]||'');
+  const sku=(text.match(/Артикул\s+([A-Z0-9-]{5,})/i)?.[1]||url.pathname.split('/').filter(Boolean).pop()||'').toUpperCase();
+  const name=clean(html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]||html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1]||'');
   if(!sku||!name)return null;
   const attributes=extractAttributes(html);
   const images=extractImages(html,url);
-  const price=priceNumber(text.match(/([0-9][0-9\\s]{2,})\\s*₽/)?.[1]);
+  const price=priceNumber(text.match(/([0-9][0-9\s]{2,})\s*₽/)?.[1]);
   const stockText=text.match(/В наличии:\s*([^|]{1,60})/i)?.[1]?.trim()||'';
-  const stockMatch=stockText.match(/(\\d+)/);
-  const description=clean(html.match(/О серии[\\s\\S]{0,1800}/i)?.[0]||'');
+  const stockMatch=stockText.match(/(\d+)/);
+  const description=clean(html.match(/О серии[\s\S]{0,1800}/i)?.[0]||'');
   const specs=unique([
     attributes['Источник света'],
     attributes['Количество ламп']?attributes['Количество ламп']+' ламп':'',
@@ -86,9 +86,6 @@ export async function POST(request:NextRequest){
     const results=await Promise.all(urls.map(async url=>{try{const product=await fetchDetail(url);return product?{ok:true,product}:{ok:false,url,error:'Карточка не распознана.'};}catch(error){return {ok:false,url,error:error instanceof Error?error.message:'Ошибка'};}}));
     const products=results.filter(x=>x.ok).map(x=>x.product);
     const storage=await upsertProducts(products);
-    return NextResponse.json({
-      source:'Maytoni product pages',total:results.length,imported:results.filter(x=>x.ok).length,
-      products,errors:results.filter(x=>!x.ok),storage
-    });
+    return NextResponse.json({source:'Maytoni product pages',total:results.length,imported:results.filter(x=>x.ok).length,products,errors:results.filter(x=>!x.ok),storage});
   }catch{return NextResponse.json({error:'Некорректный JSON-запрос.'},{status:400});}
 }
