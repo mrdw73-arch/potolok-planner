@@ -11,6 +11,9 @@ export async function POST(request:NextRequest){
   try{
     const body=await request.json().catch(()=>({}));
     const section=String(body?.url||"https://maytoni.ru/catalog/decorative/").trim();
+    const requestedLimit=Number(body?.limit||0);
+    const limit=Number.isFinite(requestedLimit)&&requestedLimit>0?Math.min(Math.floor(requestedLimit),50):0;
+
     const parsed=new URL(section);
     if(parsed.protocol!=="https:"||!allowedHosts.has(parsed.hostname)||!parsed.pathname.startsWith("/catalog/")){
       return NextResponse.json({error:"Разрешён только HTTPS-каталог Maytoni."},{status:400});
@@ -25,7 +28,8 @@ export async function POST(request:NextRequest){
     const data=await response.json().catch(()=>({}));
     if(!response.ok) return NextResponse.json({error:String(data?.error||"Не удалось получить список товаров Maytoni.")},{status:502});
 
-    const urls=Array.isArray(data?.urls)?data.urls.map((x:unknown)=>String(x)).filter(Boolean):[];
+    const discovered=Array.isArray(data?.urls)?data.urls.map((x:unknown)=>String(x)).filter(Boolean):[];
+    const urls=limit?discovered.slice(0,limit):discovered;
     if(!urls.length) return NextResponse.json({error:"Maytoni не вернул ссылки на товары."},{status:422});
 
     const runId=await createImportRunWithUrls("Maytoni",section,urls);
@@ -34,7 +38,7 @@ export async function POST(request:NextRequest){
     const baseUrl=new URL(request.url).origin;
     const run=await start(runMaytoniImport,[runId,baseUrl]);
 
-    return NextResponse.json({runId,workflowRunId:run.runId,found:urls.length,status:"started"});
+    return NextResponse.json({runId,workflowRunId:run.runId,found:urls.length,status:"started",testMode:Boolean(limit)});
   }catch(error){
     return NextResponse.json({error:error instanceof Error?error.message:"Не удалось запустить импорт Maytoni."},{status:500});
   }
