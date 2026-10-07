@@ -27,6 +27,9 @@ export async function ensureCatalogSchema(){
   await sql`
     CREATE INDEX IF NOT EXISTS import_runs_started_at_idx ON import_runs(started_at DESC)
   `;
+  await sql`ALTER TABLE import_runs ADD COLUMN IF NOT EXISTS processed INTEGER NOT NULL DEFAULT 0`;
+  await sql`CREATE TABLE IF NOT EXISTS import_run_items (run_id TEXT NOT NULL REFERENCES import_runs(id) ON DELETE CASCADE, position INTEGER NOT NULL, url TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, error_message TEXT NOT NULL DEFAULT '', processed_at TIMESTAMPTZ, PRIMARY KEY (run_id, position))`;
+  await sql`CREATE INDEX IF NOT EXISTS import_run_items_status_idx ON import_run_items(run_id,status,position)`;
   await sql`
     CREATE TABLE IF NOT EXISTS products (
       id TEXT PRIMARY KEY,
@@ -136,4 +139,30 @@ export async function upsertProducts(items:any[]){
 
   const updated=result.filter((row:any)=>!row.inserted).length;
   return {saved:result.length,updated,enabled:true};
+}
+
+export async function createImportRunWithUrls(provider:string,source:string,urls:string[]){
+  const sql=getDb(); if(!sql) return null; await ensureCatalogSchema();
+  const id=provider.toLowerCase()+"-"+Date.now()+"-"+Math.random().toString(36).slice(2,8);
+  await sql`INSERT INTO import_runs (id,provider,source,status,found) VALUES (${id},${provider},${source},'queued',${urls.length})`;
+  if(urls.length) await sql`INSERT INTO import_run_items (run_id,position,url) SELECT ${id}, (value-1)::int, url FROM jsonb_array_elements_text(${JSON.stringify(urls)}::jsonb) WITH ORDINALITY AS t(url,value)`;
+  return id;
+}
+
+export async function getImportRun(id:string){
+  const sql=getDb(); if(!sql) return null; await ensureCatalogSchema();
+  const rows=await sql`SELECT id,provider,source,status,found,saved,updated,errors,processed,error_message,started_at,finished_at FROM import_runs WHERE id=${id} LIMIT 1`;
+  return rows[0]||null;
+}
+
+export async function getImportBatch(id:string,limit=5){
+  const sql=getDb(); if(!sql) return [];
+  return await sql`SELECT position,url,attempts FROM import_run_items WHERE run_id=${id} AND status='pending' ORDER BY position LIMIT ${limit}`;
+}
+
+export async function markImportBatch(id:string,positions:number[],result:{saved:number;updated:number;errors:number;errorMessage?:string}){
+  const sql=getDb(); if(!sql) return false;
+  if(positions.length) await sql`UPDATE import_run_items SET status='done',attempts=attempts+1,processed_at=NOW() WHERE run_id=${id} AND position = ANY(${positions}::int[])`;
+  await sql`UPDATE import_runs SET processed=processed+${positions.length},saved=saved+${result.saved},updated=updated+${result.updated},errors=errors+${result.errors},error_message=CASE WHEN ${result.errorMessage||''}='' THEN error_message ELSE ${result.errorMessage||''} END WHERE id=${id}`;
+  return true;
 }
