@@ -12,7 +12,7 @@ async function loadBatch(runId:string):Promise<BatchRow[]>{
   return await getImportBatch(runId,5) as BatchRow[];
 }
 
-async function processBatch(runId:string,baseUrl:string,urls:string[]){
+async function processBatch(baseUrl:string,urls:string[]){
   "use step";
   const response=await fetch(baseUrl+"/api/import/maytoni",{
     method:"POST",
@@ -22,12 +22,7 @@ async function processBatch(runId:string,baseUrl:string,urls:string[]){
   });
   const data=await response.json().catch(()=>({}));
   if(!response.ok) throw new Error(String(data?.error||"Maytoni batch import failed"));
-  return {
-    saved:Number(data?.saved||0),
-    updated:Number(data?.updated||0),
-    errors:Number(data?.errors||0),
-    products:Array.isArray(data?.products)?data.products.length:0
-  };
+  return {saved:Number(data?.saved||0),updated:Number(data?.updated||0),errors:Number(data?.errors||0)};
 }
 
 async function recordBatch(runId:string,positions:number[],result:{saved:number;updated:number;errors:number;errorMessage?:string}){
@@ -35,9 +30,9 @@ async function recordBatch(runId:string,positions:number[],result:{saved:number;
   await markImportBatch(runId,positions,result);
 }
 
-async function finish(runId:string,status:string,errorMessage=""){
+async function setStatus(runId:string,status:string,errorMessage=""){
   "use step";
-  await finishImportRun(runId,{status,saved:0,updated:0,errors:0,errorMessage});
+  await updateImportRunStatus(runId,status,errorMessage);
 }
 
 export async function runMaytoniImport(runId:string,baseUrl:string){
@@ -45,20 +40,27 @@ export async function runMaytoniImport(runId:string,baseUrl:string){
   const run=await loadRun(runId);
   if(!run) throw new Error("Import run not found");
   const origin=baseUrl.replace(/\/$/,"");
-  while(true){
-    const batch=await loadBatch(runId);
-    if(!batch.length){
-      await finishImportRun(runId,{status:"completed",saved:0,updated:0,errors:0});
-      return {runId,status:"completed"};
+  await setStatus(runId,"running");
+  try{
+    while(true){
+      const batch=await loadBatch(runId);
+      if(!batch.length){
+        await setStatus(runId,"completed");
+        return {runId,status:"completed"};
+      }
+      const positions=batch.map(x=>x.position);
+      try{
+        const result=await processBatch(origin,batch.map(x=>x.url));
+        await recordBatch(runId,positions,result);
+      }catch(error){
+        const message=error instanceof Error?error.message:String(error);
+        await recordBatch(runId,positions,{saved:0,updated:0,errors:1,errorMessage:message});
+        throw error;
+      }
     }
-    const positions=batch.map(x=>x.position);
-    try{
-      const result=await processBatch(runId,origin,batch.map(x=>x.url));
-      await recordBatch(runId,positions,result);
-    }catch(error){
-      const message=error instanceof Error?error.message:String(error);
-      await recordBatch(runId,positions,{saved:0,updated:0,errors:1,errorMessage:message});
-      throw error;
-    }
+  }catch(error){
+    const message=error instanceof Error?error.message:String(error);
+    await setStatus(runId,"failed",message);
+    throw error;
   }
 }
