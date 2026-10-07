@@ -7,7 +7,7 @@ type DetailProduct = {
   stockText:string; description:string; specs:string[]; attributes:Record<string,string>;
 };
 
-const allowedHost='maytoni.ru';
+const allowedHosts=new Set(['maytoni.ru','www.maytoni.ru','new-maytoni.maytoni.ru']);
 export const maxDuration = 60;
 
 function decode(v:string){return v.replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#x27;/gi,"'").replace(/&#39;/g,"'").replace(/&nbsp;/g,' ').replace(/&#x2F;/gi,'/').replace(/&#8211;/gi,'–').replace(/&#8212;/gi,'—').trim();}
@@ -71,7 +71,7 @@ function parseDetail(html:string,url:URL):DetailProduct|null{
 
 async function fetchDetail(sourceUrl:string){
   const url=new URL(sourceUrl);
-  if(url.protocol!=='https:'||url.hostname!==allowedHost||!url.pathname.startsWith('/catalog/'))throw new Error('Недопустимый URL Maytoni.');
+  if(url.protocol!=='https:'||!allowedHosts.has(url.hostname)||!url.pathname.startsWith('/catalog/'))throw new Error('Недопустимый URL Maytoni.');
   const response=await fetch(url.href,{headers:{'User-Agent':'LumiHub Catalog Importer/2.0'},cache:'no-store'});
   if(!response.ok)throw new Error('Maytoni HTTP '+response.status);
   return parseDetail(await response.text(),url);
@@ -88,7 +88,7 @@ export async function POST(request:NextRequest){
   try{
     const body=await request.json();const urls:string[]=Array.isArray(body?.urls)?body.urls:[];
     if(!urls.length||urls.length>50)return NextResponse.json({error:'Передайте массив из 1–50 URL карточек Maytoni.'},{status:400});
-    const results=await Promise.all(urls.map(async url=>{try{const product=await fetchDetail(url);return product?{ok:true,product}:{ok:false,url,error:'Карточка не распознана.'};}catch(error){return {ok:false,url,error:error instanceof Error?error.message:'Ошибка'};}}));
+    const results:any[]=[];\n    for(let i=0;i<urls.length;i+=5){\n      const chunk=urls.slice(i,i+5);\n      const chunkResults=await Promise.all(chunk.map(async url=>{try{const product=await fetchDetail(url);return product?{ok:true,product}:{ok:false,url,error:'Карточка не распознана.'};}catch(error){return {ok:false,url,error:error instanceof Error?error.message:'Ошибка'};}}));\n      results.push(...chunkResults);\n    }
     const products=results.filter(x=>x.ok).map(x=>x.product);
     const storage=await upsertProducts(products);
     return NextResponse.json({source:'Maytoni product pages',total:results.length,imported:results.filter(x=>x.ok).length,products,errors:results.filter(x=>!x.ok),storage});
