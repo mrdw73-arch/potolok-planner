@@ -10,6 +10,24 @@ export async function ensureCatalogSchema(){
   const sql=getDb();
   if(!sql) return false;
   await sql`
+    CREATE TABLE IF NOT EXISTS import_runs (
+      id TEXT PRIMARY KEY,
+      provider TEXT NOT NULL,
+      source TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'running',
+      found INTEGER NOT NULL DEFAULT 0,
+      saved INTEGER NOT NULL DEFAULT 0,
+      updated INTEGER NOT NULL DEFAULT 0,
+      errors INTEGER NOT NULL DEFAULT 0,
+      error_message TEXT NOT NULL DEFAULT '',
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      finished_at TIMESTAMPTZ
+    )
+  `;
+  await sql`
+    CREATE INDEX IF NOT EXISTS import_runs_started_at_idx ON import_runs(started_at DESC)
+  `;
+  await sql`
     CREATE TABLE IF NOT EXISTS products (
       id TEXT PRIMARY KEY,
       sku TEXT NOT NULL UNIQUE,
@@ -31,6 +49,22 @@ export async function ensureCatalogSchema(){
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+  return true;
+}
+
+export async function startImportRun(provider:string,source:string,found:number){
+  const sql=getDb();
+  if(!sql) return null;
+  await ensureCatalogSchema();
+  const id=`${provider.toLowerCase()}-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+  await sql`INSERT INTO import_runs (id,provider,source,found) VALUES (${id},${provider},${source},${found})`;
+  return id;
+}
+
+export async function finishImportRun(id:string,data:{status:string,saved:number,updated:number,errors:number,errorMessage?:string}){
+  const sql=getDb();
+  if(!sql) return false;
+  await sql`UPDATE import_runs SET status=${data.status},saved=${data.saved},updated=${data.updated},errors=${data.errors},error_message=${data.errorMessage||''},finished_at=NOW() WHERE id=${id}`;
   return true;
 }
 
