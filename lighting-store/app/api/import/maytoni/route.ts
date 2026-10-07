@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { upsertProducts } from '../../../../lib/db';
 
 type DetailProduct = {
   id:string; sku:string; name:string; category:string; price:number|null;
@@ -83,9 +84,11 @@ export async function POST(request:NextRequest){
     const body=await request.json();const urls:string[]=Array.isArray(body?.urls)?body.urls:[];
     if(!urls.length||urls.length>20)return NextResponse.json({error:'Передайте массив из 1–20 URL карточек Maytoni.'},{status:400});
     const results=await Promise.all(urls.map(async url=>{try{const product=await fetchDetail(url);return product?{ok:true,product}:{ok:false,url,error:'Карточка не распознана.'};}catch(error){return {ok:false,url,error:error instanceof Error?error.message:'Ошибка'};}}));
+    const products=results.filter(x=>x.ok).map(x=>x.product);
+    const storage=await upsertProducts(products);
     return NextResponse.json({
       source:'Maytoni product pages',total:results.length,imported:results.filter(x=>x.ok).length,
-      products:results.filter(x=>x.ok).map(x=>x.product),errors:results.filter(x=>!x.ok)
+      products,errors:results.filter(x=>!x.ok),storage
     });
   }catch{return NextResponse.json({error:'Некорректный JSON-запрос.'},{status:400});}
 }
