@@ -144,7 +144,7 @@ export async function upsertProducts(items:any[]){
 
 export async function updateImportRunStatus(id:string,status:string,errorMessage=""){
   const sql=getDb(); if(!sql) return false;
-  await sql\`UPDATE import_runs SET status=\${status},error_message=\${errorMessage},finished_at=CASE WHEN \${status} IN ('completed','failed','cancelled') THEN NOW() ELSE finished_at END WHERE id=\${id}\`;
+  await sql`UPDATE import_runs SET status=${status},error_message=${errorMessage},finished_at=CASE WHEN ${status} IN ('completed','failed','cancelled') THEN NOW() ELSE finished_at END WHERE id=${id}`;
   return true;
 }
 
