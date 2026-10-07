@@ -73,7 +73,10 @@ export async function upsertProducts(items:any[]){
   if(!sql) return {saved:0,enabled:false};
   await ensureCatalogSchema();
   let saved=0;
+  let updated=0;
   for(const p of items){
+    const existing=await sql`SELECT sku FROM products WHERE sku=${p.sku} LIMIT 1`;
+    if(existing.length) updated++;
     await sql`
       INSERT INTO products
       (id,sku,brand,name,category,price,currency,stock,stock_text,image,images,specs,attributes,description,source_url,source_provider,updated_at)
@@ -87,5 +90,5 @@ export async function upsertProducts(items:any[]){
     `;
     saved++;
   }
-  return {saved,enabled:true};
+  return {saved,updated,enabled:true};
 }
