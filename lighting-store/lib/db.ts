@@ -70,25 +70,70 @@ export async function finishImportRun(id:string,data:{status:string,saved:number
 
 export async function upsertProducts(items:any[]){
   const sql=getDb();
-  if(!sql) return {saved:0,enabled:false};
+  if(!sql) return {saved:0,updated:0,enabled:false};
+  if(!items.length) return {saved:0,updated:0,enabled:true};
   await ensureCatalogSchema();
-  let saved=0;
-  let updated=0;
-  for(const p of items){
-    const existing=await sql`SELECT sku FROM products WHERE sku=${p.sku} LIMIT 1`;
-    if(existing.length) updated++;
-    await sql`
-      INSERT INTO products
+  const payload=items.map(p=>({
+    id:String(p.id||''),
+    sku:String(p.sku||''),
+    brand:String(p.brand||'Maytoni'),
+    name:String(p.name||'Без названия'),
+    category:String(p.category||'Декоративный свет'),
+    price:typeof p.price==='number'?p.price:null,
+    currency:'RUB',
+    stock:typeof p.stock==='number'?p.stock:0,
+    stock_text:String(p.stockText||''),
+    image:String(p.image||''),
+    images:p.images||[],
+    specs:p.specs||[],
+    attributes:p.attributes||{},
+    description:String(p.description||''),
+    source_url:String(p.sourceUrl||''),
+    source_provider:String(p.brand||'Maytoni')
+  })).filter(p=>p.sku);
+
+  const result=await sql`
+    INSERT INTO products
       (id,sku,brand,name,category,price,currency,stock,stock_text,image,images,specs,attributes,description,source_url,source_provider,updated_at)
-      VALUES
-      (${p.id},${p.sku},${p.brand||'Maytoni'},${p.name},${p.category||'Подвесные светильники'},${p.price},'RUB',${p.stock||0},${p.stockText||''},${p.image||''},${JSON.stringify(p.images||[])},${JSON.stringify(p.specs||[])},${JSON.stringify(p.attributes||{})},${p.description||''},${p.sourceUrl},${p.brand||'Maytoni'},NOW())
-      ON CONFLICT (sku) DO UPDATE SET
-        brand=EXCLUDED.brand,name=EXCLUDED.name,category=EXCLUDED.category,price=EXCLUDED.price,
-        stock=EXCLUDED.stock,stock_text=EXCLUDED.stock_text,image=EXCLUDED.image,images=EXCLUDED.images,
-        specs=EXCLUDED.specs,attributes=EXCLUDED.attributes,description=EXCLUDED.description,
-        source_url=EXCLUDED.source_url,source_provider=EXCLUDED.source_provider,updated_at=NOW()
-    `;
-    saved++;
-  }
-  return {saved,updated,enabled:true};
+    SELECT
+      x.id,x.sku,x.brand,x.name,x.category,x.price,x.currency,x.stock,x.stock_text,x.image,
+      x.images,x.specs,x.attributes,x.description,x.source_url,x.source_provider,NOW()
+    FROM jsonb_to_recordset(${JSON.stringify(payload)}::jsonb) AS x(
+      id text,
+      sku text,
+      brand text,
+      name text,
+      category text,
+      price numeric,
+      currency text,
+      stock integer,
+      stock_text text,
+      image text,
+      images jsonb,
+      specs jsonb,
+      attributes jsonb,
+      description text,
+      source_url text,
+      source_provider text
+    )
+    ON CONFLICT (sku) DO UPDATE SET
+      brand=EXCLUDED.brand,
+      name=EXCLUDED.name,
+      category=EXCLUDED.category,
+      price=EXCLUDED.price,
+      stock=EXCLUDED.stock,
+      stock_text=EXCLUDED.stock_text,
+      image=EXCLUDED.image,
+      images=EXCLUDED.images,
+      specs=EXCLUDED.specs,
+      attributes=EXCLUDED.attributes,
+      description=EXCLUDED.description,
+      source_url=EXCLUDED.source_url,
+      source_provider=EXCLUDED.source_provider,
+      updated_at=NOW()
+    RETURNING (xmax = 0) AS inserted
+  `;
+
+  const updated=result.filter((row:any)=>!row.inserted).length;
+  return {saved:result.length,updated,enabled:true};
 }
