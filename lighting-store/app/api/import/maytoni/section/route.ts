@@ -20,7 +20,7 @@ export async function GET(request:NextRequest){
     const html=await response.text();
     const seen=new Set<string>();
     const urls:string[]=[];
-    const re=/href=["']([^"']*\/catalog\/[^"']+\/)["']/gi;
+    const re=new RegExp(`href=["']([^"']*/catalog/[^"']+/)["']`,'gi');
     let m:RegExpExecArray|null;
     while((m=re.exec(html))){
       try{
