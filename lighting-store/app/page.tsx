@@ -37,16 +37,30 @@ function Imports() {
   const [message, setMessage] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [runs, setRuns] = useState<Array<Record<string, unknown>>>([]);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
   const refreshRuns = async () => {
     const response = await fetch("/api/import/runs", { cache: "no-store" });
     const data = await response.json();
     setRuns(data.runs || []);
+    const current = (data.runs || []).find((run: Record<string, unknown>) => String(run.id) === activeRunId);
+    if (current && ["completed", "failed", "cancelled"].includes(String(current.status))) {
+      setActiveRunId(null);
+      setMessage("Импорт завершён: " + String(current.status));
+    }
   };
 
   useEffect(() => {
     void refreshRuns();
   }, []);
+
+  useEffect(() => {
+    if (!activeRunId) return;
+    const timer = window.setInterval(() => {
+      void refreshRuns();
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [activeRunId]);
 
   const runTestImport = async () => {
     setSyncing(true);
@@ -88,7 +102,8 @@ function Imports() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Не удалось запустить импорт");
-      setMessage("✓ Импорт запущен: " + Number(data.found || 0) + " товаров. Можно закрыть страницу.");
+      setActiveRunId(String(data.runId || ""));
+      setMessage("✓ Workflow запущен: " + Number(data.found || 0) + " товаров. Статус обновляется автоматически.");
       await refreshRuns();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ошибка запуска импорта");
