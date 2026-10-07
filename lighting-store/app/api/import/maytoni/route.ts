@@ -8,6 +8,7 @@ type DetailProduct = {
 };
 
 const allowedHost='maytoni.ru';
+export const maxDuration = 60;
 
 function decode(v:string){return v.replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#x27;/gi,"'").replace(/&#39;/g,"'").replace(/&nbsp;/g,' ').replace(/&#x2F;/gi,'/').replace(/&#8211;/gi,'–').replace(/&#8212;/gi,'—').trim();}
 function clean(v:string){return decode(v.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' '));}
