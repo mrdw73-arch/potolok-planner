@@ -1,4 +1,4 @@
-import { getImportBatch, markImportBatch, getImportRun, finishImportRun } from "../lib/db";
+import { getImportBatch, markImportBatch, getImportRun, updateImportRunStatus } from "../lib/db";
 
 type BatchRow={position:number;url:string;attempts:number};
 
