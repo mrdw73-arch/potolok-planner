@@ -40,7 +40,7 @@ export async function GET(request:NextRequest){
     return NextResponse.json({error:'Разрешены только HTTPS-ссылки на разделы Maytoni.ru.'},{status:400});
   }
   try{
-    const response=await fetch(url.href,{headers:{'User-Agent':'LumiHub Catalog Importer/1.2'},cache:'no-store'});
+    const response=await fetch(url.href,{headers:{'User-Agent':'LumiHub Catalog Importer/1.3'},cache:'no-store'});
     if(!response.ok)return NextResponse.json({error:'Maytoni HTTP '+response.status},{status:502});
     const html=await response.text();
     const urls=extractCatalogLinks(html,url);
