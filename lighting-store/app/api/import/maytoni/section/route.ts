@@ -31,7 +31,7 @@ function isProductUrl(value:string,rootPath:string){
 
 function extractLocs(xml:string){
   const out:string[]=[];
-  const re=/<loc>\\s*([^<]+?)\\s*<\\/loc>/gi;
+  const re=/<loc>\s*([^<]+?)\s*<\/loc>/gi;
   let m:RegExpExecArray|null;
   while((m=re.exec(xml)))out.push(decode(m[1]));
   return [...new Set(out)];
@@ -52,7 +52,7 @@ async function discoverFromSitemap(rootPath:string){
     try{
       const xml=await fetchText(candidate);
       let locs=extractLocs(xml);
-      const isIndex=/<sitemap(?:index)?[\\s>]/i.test(xml)&&/<sitemap>/i.test(xml);
+      const isIndex=/<sitemap(?:index)?[\s>]/i.test(xml)&&/<sitemap>/i.test(xml);
       if(isIndex){
         const children=locs.filter(x=>/sitemap/i.test(x)).slice(0,50);
         const childResults=await Promise.all(children.map(async child=>{
@@ -78,7 +78,7 @@ function extractCatalogLinks(html:string,base:URL){
     try{
       const u=new URL(href);
       if(u.hostname!==allowedHost||!u.pathname.startsWith('/catalog/'))continue;
-      const normalized=u.href.replace(/\\/$/,'')+'/';
+      const normalized=u.href.replace(/\/$/,'')+'/';
       if(!seen.has(normalized)){seen.add(normalized);urls.push(normalized);}
     }catch{}
   }
