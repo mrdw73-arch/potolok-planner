@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const allowedHost='maytoni.ru';
+const allowedHosts=new Set(['maytoni.ru','www.maytoni.ru','new-maytoni.maytoni.ru']);
 
 function decode(v:string){
   return v
@@ -20,7 +20,7 @@ function absolute(value:string,base:URL){
 function isProductUrl(value:string,rootPath:string){
   try{
     const u=new URL(value);
-    if(u.protocol!=='https:'||u.hostname!==allowedHost)return false;
+    if(u.protocol!=='https:'||!allowedHosts.has(u.hostname))return false;
     if(!u.pathname.startsWith(rootPath))return false;
     const parts=u.pathname.split('/').filter(Boolean);
     const last=parts.at(-1)||'';
@@ -52,7 +52,7 @@ async function discoverFromSitemap(rootPath:string){
     try{
       const xml=await fetchText(candidate);
       let locs=extractLocs(xml);
-      const isIndex=/<sitemap(?:index)?[\s>]/i.test(xml)&&/<sitemap>/i.test(xml);
+      const isIndex=/<sitemapindex\b/i.test(xml);
       if(isIndex){
         const children=locs.filter(x=>/sitemap/i.test(x)).slice(0,50);
         const childResults=await Promise.all(children.map(async child=>{
@@ -77,7 +77,7 @@ function extractCatalogLinks(html:string,base:URL){
     if(!href)continue;
     try{
       const u=new URL(href);
-      if(u.hostname!==allowedHost||!u.pathname.startsWith('/catalog/'))continue;
+      if(!allowedHosts.has(u.hostname)||!u.pathname.startsWith('/catalog/'))continue;
       const normalized=u.href.replace(/\/$/,'')+'/';
       if(!seen.has(normalized)){seen.add(normalized);urls.push(normalized);}
     }catch{}
@@ -118,7 +118,7 @@ export async function GET(request:NextRequest){
   if(!input)return NextResponse.json({error:'Передайте параметр url.'},{status:400});
   let url:URL;
   try{url=new URL(input);}catch{return NextResponse.json({error:'Некорректная ссылка.'},{status:400});}
-  if(url.protocol!=='https:'||url.hostname!==allowedHost||!url.pathname.startsWith('/catalog/')){
+  if(url.protocol!=='https:'||!allowedHosts.has(url.hostname)||!url.pathname.startsWith('/catalog/')){
     return NextResponse.json({error:'Разрешены только HTTPS-ссылки на разделы Maytoni.ru.'},{status:400});
   }
   try{
