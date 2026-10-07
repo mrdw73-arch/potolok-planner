@@ -10,7 +10,7 @@ type DetailProduct = {
 const allowedHost='maytoni.ru';
 
 function decode(v:string){return v.replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#x27;/gi,"'").replace(/&#39;/g,"'").replace(/&nbsp;/g,' ').replace(/&#x2F;/gi,'/').replace(/&#8211;/gi,'–').replace(/&#8212;/gi,'—').trim();}
-function clean(v:string){return decode(v.replace(/<script[\\s\\S]*?<\\/script>/gi,' ').replace(/<style[\\s\\S]*?<\\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\\s+/g,' '));}
+function clean(v:string){return decode(v.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ')));}
 function priceNumber(v?:string){if(!v)return null;const n=Number(v.replace(/[^0-9,.-]/g,'').replace(',','.'));return Number.isFinite(n)?n:null;}
 function absolute(v:string,base:URL){try{return new URL(decode(v),base).href}catch{return ''}}
 function unique(a:string[]){return [...new Set(a.filter(Boolean))]}
