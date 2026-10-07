@@ -9,7 +9,7 @@ async function loadRun(runId:string){
 
 async function loadBatch(runId:string):Promise<BatchRow[]>{
   "use step";
-  return await getImportBatch(runId,5) as BatchRow[];
+  return await getImportBatch(runId,20) as BatchRow[];
 }
 
 async function processBatch(baseUrl:string,urls:string[]){
