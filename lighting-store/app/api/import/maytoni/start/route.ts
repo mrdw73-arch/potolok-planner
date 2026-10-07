@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { start } from "workflow/api";
-import { createImportRunWithUrls } from "../../../../../lib/db";
+import { createImportRunWithUrls, getActiveImportRun } from "../../../../../lib/db";
 import { runMaytoniImport } from "../../../../../workflows/maytoni-import";
 
 export const maxDuration=60;
@@ -16,7 +16,7 @@ export async function POST(request:NextRequest){
       return NextResponse.json({error:"Разрешён только HTTPS-каталог Maytoni."},{status:400});
     }
 
-    const discovery=new URL("/api/import/maytoni/section",request.url);
+    const active=await getActiveImportRun("Maytoni");\n    if(active) return NextResponse.json({runId:active.id,found:active.found,status:"already_running"});\n\n    const discovery=new URL("/api/import/maytoni/section",request.url);
     discovery.searchParams.set("url",section);
     const response=await fetch(discovery,{cache:"no-store"});
     const data=await response.json().catch(()=>({}));
