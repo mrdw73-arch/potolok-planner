@@ -24,15 +24,9 @@ export async function POST(request:NextRequest){
     })).filter((p:any)=>p.sku);
     if(!items.length)return NextResponse.json({error:'В данных нет артикулов SKU.'},{status:422});
     await ensureCatalogSchema();
-    const sql=getDb();
     const runId=await startImportRun('Maytoni','CSV',items.length);
-    let updated=0;
-    if(sql){
-      const skus=items.map((p:any)=>p.sku);
-      const existing=await sql`SELECT sku FROM products WHERE sku = ANY(${skus})`;
-      updated=existing.length;
-    }
     const result=await upsertProducts(items);
+    const updated=result.updated||0;
     if(runId) await finishImportRun(runId,{status:'completed',saved:result.saved,updated,errors:0});
     return NextResponse.json({saved:result.saved,updated,errors:0,found:items.length,runId,storage:result});
   }catch(error){
