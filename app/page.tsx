@@ -90,7 +90,7 @@ export default function Home() {
     const scale = Math.min(660 / Math.max(maxX - minX, 1), 460 / Math.max(maxY - minY, 1));
     return { minX, minY, scale, ox: (W - (maxX - minX) * scale) / 2, oy: (H - (maxY - minY) * scale) / 2 };
   }, [points]);
-  const toSvg = (p: Point) => ({ x: bounds.ox + (p.x - bounds.minX) * bounds.scale, y: bounds.oy + (p.y - bounds.minY) * bounds.scale });
+  const toSvg = (p: Point) => drawMode ? ({ x: 70 + p.x / 5000 * 660, y: 70 + p.y / 3600 * 460 }) : ({ x: bounds.ox + (p.x - bounds.minX) * bounds.scale, y: bounds.oy + (p.y - bounds.minY) * bounds.scale });
   const quantities = useMemo(() => {
     const auto = { canvas: area, profile: perimeter, insert: perimeter, fastener: perimeter, spot: elements.filter(e => e.type === 'spot').length, chandelier: elements.filter(e => e.type === 'chandelier').length, cornice: perimeter, installation: area };
     return Object.fromEntries(Object.entries(auto).map(([id, value]) => [id, overrides[id] ?? value]));
@@ -196,7 +196,7 @@ export default function Home() {
     if (!drawMode) return;
     const svg = e.currentTarget; const rect = svg.getBoundingClientRect();
     const sx = (e.clientX - rect.left) / rect.width * W; const sy = (e.clientY - rect.top) / rect.height * H;
-    const raw = snapPoint({ x: sx / W * 5000, y: sy / H * 3600 }, 10);
+    const raw = snapPoint({ x: Math.max(0, Math.min(5000, (sx - 70) / 660 * 5000)), y: Math.max(0, Math.min(3600, (sy - 70) / 460 * 3600)) }, 10);
     if (!drawStarted) { setPoints([raw]); setDrawStarted(true); setSelectedPoint(0); setSelectedWall(0); }
     else setPoints(current => [...current, raw]);
   }
