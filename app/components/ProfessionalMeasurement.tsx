@@ -33,9 +33,7 @@ export default function ProfessionalMeasurement({ points, setPoints, onBack }: P
   }
 
   function reset() {
-    setPoints(current => current.length === 4
-      ? current.map((_, i) => [{ x: 0, y: 0 }, { x: 5000, y: 0 }, { x: 5000, y: 3600 }, { x: 0, y: 3600 }][i])
-      : current);
+    setPoints([{ x: 0, y: 0 }, { x: 5000, y: 0 }, { x: 5000, y: 3600 }, { x: 0, y: 3600 }]);
   }
 
   return <div className="professional-measurement">
