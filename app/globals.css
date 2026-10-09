@@ -24,3 +24,7 @@
 .diagonal-list>div{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #eceef1}
 @media(max-width:900px){.measurement-metrics{grid-template-columns:1fr 1fr}.measurement-grid{grid-template-columns:1fr}}
 @media(max-width:640px){.mode-switch{width:100%}.mode-switch button{flex:1}.professional-measurement{padding:14px}.measurement-head{flex-direction:column}.measurement-metrics{grid-template-columns:1fr 1fr}}
+
+/* Управление контуром по мотивам демонстрации «Потолочник» */
+.drawing-contour-mode{cursor:crosshair}.drawing-contour-mode .handle{pointer-events:none}.light-line-symbol{stroke:#f08a24;stroke-width:5;stroke-linecap:round}.mode-switch{display:flex;gap:6px;flex-wrap:wrap}.mode-switch button{white-space:nowrap}
+@media(max-width:900px){.canvas-toolbar{height:auto;min-height:54px;align-items:flex-start;gap:10px;flex-direction:column;padding:12px}.mode-switch{width:100%}.mode-switch button{font-size:11px;padding:8px 9px}}
